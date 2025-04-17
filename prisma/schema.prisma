@@ -1,0 +1,248 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core models from your schema
+model User {
+  id               String            @id @default(cuid())
+  name             String?
+  email            String?           @unique
+  emailVerified    DateTime?
+  image            String?
+  password         String?
+  role             UserRole          @default(User)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  listings         Listing[]
+  favorites        Listing[]         @relation("FavoriteListings")
+  messages         Message[]         @relation("MessageSender")
+  receivedMessages Message[]         @relation("UserMessages")
+  reviews          Review[]
+  bookings         Booking[]
+  accounts         Account[]
+  sessions         Session[]
+  notifications    Notification[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Listing {
+  id              String          @id @default(cuid())
+  title           String
+  description     String
+  category        Category
+  listingType     ListingType
+  price           Float
+  currency        Currency        @default(USD)
+  location        String
+  images          String[]
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  favoritedBy     User[]          @relation("FavoriteListings")
+  publishedStatus PublishedStatus @default(ACTIVE)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  messages        Message[]
+  reviews         Review[]
+  bookings        Booking[]
+  features        Json?           // Store category-specific features
+  amenities       String[]        // For properties, hotels, etc.
+  coordinates     Coordinates?    // Location coordinates
+  views           Int             @default(0)
+}
+
+model Coordinates {
+  id        String   @id @default(cuid())
+  latitude  Float
+  longitude Float
+  listingId String   @unique
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  content    String
+  senderId   String
+  receiverId String
+  listingId  String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  sender     User     @relation("MessageSender", fields: [senderId], references: [id])
+  receiver   User     @relation("UserMessages", fields: [receiverId], references: [id])
+  listing    Listing? @relation(fields: [listingId], references: [id])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  rating    Float
+  content   String?
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+  listing   Listing  @relation(fields: [listingId], references: [id])
+}
+
+model Booking {
+  id          String        @id @default(cuid())
+  startDate   DateTime
+  endDate     DateTime
+  totalPrice  Float
+  currency    Currency      @default(USD)
+  status      BookingStatus @default(PENDING)
+  userId      String
+  listingId   String
+  guestCount  Int?
+  specialRequests String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id])
+  listing     Listing       @relation(fields: [listingId], references: [id])
+  payments    Payment[]
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  amount      Float
+  currency    Currency      @default(USD)
+  status      PaymentStatus @default(PENDING)
+  method      PaymentMethod
+  bookingId   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  booking     Booking       @relation(fields: [bookingId], references: [id])
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  type      NotificationType
+  content   String
+  isRead    Boolean            @default(false)
+  userId    String
+  createdAt DateTime           @default(now())
+  user      User               @relation(fields: [userId], references: [id])
+}
+
+// Enums
+enum UserRole {
+  Admin
+  User
+  Agent
+  Agency
+}
+
+enum Category {
+  Hotel
+  Property
+  Car
+  Experience
+  Ticket
+}
+
+enum ListingType {
+  ForSale
+  ForRent
+  Booking
+}
+
+enum Currency {
+  USD
+  EUR
+  GBP
+  TL
+  CAD
+  AUD
+  CHF
+  SEK
+  NZD
+  YEN
+  RUB
+  CNY
+  INR
+  BRL
+  MXN
+  ZAR
+  SGD
+  HKD
+  NOK
+  DKK
+  Crypto
+}
+
+enum PublishedStatus {
+  ACTIVE
+  PENDING
+  ARCHIVED
+  DRAFT
+  INACTIVE
+  DELETED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  PAYPAL
+  BANK_TRANSFER
+  CRYPTO
+  CASH
+}
+
+enum NotificationType {
+  MESSAGE
+  BOOKING
+  REVIEW
+  PAYMENT
+  SYSTEM
+}
