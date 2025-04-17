@@ -1,172 +1,2999 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
+
   previewFeatures = ["postgresqlExtensions"]
 }
+generator prismaTypesGenerator {
+    provider = "prisma-types-generator"
+    modelSuffix = "Model"
+    prettier = "false"
+}
+
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// Core models from your schema
+model Report {
+  id               String          @id @default(cuid())
+  cuid             String          @unique @default(uuid())
+  title            String
+  content          String
+  propertyId       String          @map("propertyId")
+  reservationId    String          @map("reservationId")
+  userId           String          @map("userId")
+  hotelStaffId     String?
+  visitors         Int             @default(0)
+  reservations     Int             @default(0)
+  payments         Int             @default(0)
+  amount           Int             @default(0)
+  checkInDays      Int             @default(0)
+  emptyDays        Int             @default(0)
+  offersCount      Int             @default(0)
+  problems         Int             @default(0)
+  expenses         Int             @default(0)
+  providerId       String
+  provider         Provider        @relation(fields: [providerId], references: [id])
+  ReportCategory   ReportCategory
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+  slug             String          @unique
+  Listings         Listing[]
+  property         Property        @relation(fields: [propertyId], references: [id])
+  user             User            @relation(fields: [userId], references: [id])
+  Workflow         Workflow[]
+  rentalPropertyId String? // Field to hold the reference
+  rentalProperty   RentalProperty? @relation("RentalPropertyReports", fields: [rentalPropertyId], references: [id])
+  hotelStaff       HotelStaff?     @relation("HotelStaffReports", fields: [hotelStaffId], references: [id])
+
+  @@index([propertyId, userId])
+}
+
+model Provider {
+  id             String           @id @default(cuid())
+  name           String
+  category       Category
+  apiKey         String? // Optional: Store API key if needed for integration
+  apiSecret      String? // Optional: Store API secret if needed for integration
+  baseUrl        String? // Optional: Base URL for API requests (for dynamic providers)
+  isActive       Boolean          @default(true)
+  commission     Float // Commission rate for the provider
+  currency       Currency[] // List of currencies supported by the provider
+  listings       Listing[] // Associated listings from this provider
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime? // Soft delete for the provider
+  report         Report[] // Reports associated with this provider
+  reservations   Reservation[]    @relation("ReservationProvider") // Reservations from this provider
+  priceHistory   PriceHistory[] // Price history for listings from this provider
+  commissionRule CommissionRule[] // Commission rules for this provider
+  source         BookingSource
+
+  @@index([category])
+  @@index([isActive]) // Added index for easy lookup of active/inactive providers
+}
+
+enum BookingSource {
+  Direct
+  Airbnb
+  Booking
+  Expedia
+  Other
+  Agency
+  Provider
+}
+
+enum Supplier {
+  Google
+  Airbnb
+  BOOKING
+  DATABASE
+  Ex
+}
+
+enum CommissionRuleType {
+  SEASONAL
+  VOLUME
+  PROPERTY_TYPE
+  LOCATION_BASED
+  BOOKING_VALUE
+  LOYALTY
+  SPECIAL_PROMOTION
+  PACKAGE_DEAL
+  PRICE_COMPARISON
+  COMMISSION_SUMMARY
+  BOOKING_VOLUME
+  REVENUE
+  PERFORMANCE
+  PropertySaleCommission
+  PropertyRentalCommission
+  CarSaleCommission
+  CarRentalCommission
+  ExperienceCommission
+  HotelCommission
+  RentalPropertyCommission
+  TicketCommission
+  TicketSaleCommission
+}
+
+model CommissionRule {
+  id         String             @id @default(cuid())
+  providerId String
+  provider   Provider           @relation(fields: [providerId], references: [id])
+  ruleType   CommissionRuleType
+  startDate  DateTime?
+  endDate    DateTime?
+  commission Float
+  minVolume  Int? // For volume-based rules
+  maxVolume  Int?
+  conditions Json? // Flexible conditions storage
+
+  @@index([providerId])
+}
+
+model PriceSnapshot {
+  id           String   @id @default(cuid())
+  listingId    String
+  listing      Listing  @relation("ListingPriceSnapshots", fields: [listingId], references: [id])
+  basePrice    Float
+  finalPrice   Float
+  commission   Float    @default(0)
+  taxes        Float?   @default(0)
+  fees         Float?   @default(0)
+  currency     String   @default("USD")
+  exchangeRate Float    @default(1)
+  validFrom    DateTime
+  validTo      DateTime
+  createdAt    DateTime @default(now())
+  isActive     Boolean  @default(true)
+
+  @@index([listingId])
+  @@index([validFrom, validTo])
+}
+
+model PriceHistory {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  listingId  String
+  listing    Listing  @relation(fields: [listingId], references: [id])
+  price      Float
+  currency   Currency @default(USD)
+  isActive   Boolean  @default(true)
+  timestamp  DateTime @default(now())
+
+  baseRate  Float?
+  taxRate   Float?
+  totalRate Float
+
+  priceId  String?
+  priceRef Price?  @relation(fields: [priceId], references: [id]) // 
+
+  @@index([providerId, listingId])
+  @@index([timestamp])
+}
+
+model Price {
+  id               String          @id @default(cuid())
+  baseAmount       Float
+  finalAmount      Float
+  currency         Currency        @default(USD)
+  isActive         Boolean         @default(true)
+  rateConfig       Json?
+  stayConstraints  Json?
+  propertyId       String?
+  listingId        String?
+  reservationId    String?
+  carId            String?
+  ticketId         String?
+  experienceId     String?
+  hotelId          String?
+  rentalPropertyId String?
+  property         Property?       @relation("PropertyPrice", fields: [propertyId], references: [id])
+  listing          Listing?        @relation("ListingPrice", fields: [listingId], references: [id])
+  reservation      Reservation?    @relation("ReservationPrice", fields: [reservationId], references: [id])
+  car              Car?            @relation("CarPrice", fields: [carId], references: [id])
+  ticket           Ticket?         @relation("TicketPrice", fields: [ticketId], references: [id])
+  experience       Experience?     @relation("ExperiencePrice", fields: [experienceId], references: [id])
+  hotel            Hotel?          @relation("HotelPrice", fields: [hotelId], references: [id])
+  rentalProperty   RentalProperty? @relation("RentalPropertyPrice", fields: [rentalPropertyId], references: [id])
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  Workflow       Workflow[]
+  Room           PropertyRoom?  @relation(fields: [propertyRoomId], references: [id])
+  propertyRoomId String?
+  HotelRoom      HotelRoom[]
+  PriceHistory   PriceHistory[]
+
+  @@index([propertyId, isActive])
+  @@index([listingId, isActive])
+  @@index([reservationId])
+  @@index([carId])
+  @@index([ticketId])
+  @@index([experienceId])
+  @@index([hotelId])
+  @@index([rentalPropertyId])
+  @@index([currency])
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  date      DateTime
+  isBlocked Boolean  @default(false)
+  isBooked  Boolean  @default(false)
+
+  // Relationships
+  listingId String? // Now optional
+  listing   Listing? @relation(fields: [listingId], references: [id])
+
+  propertyRoomId String?
+  propertyRoom   PropertyRoom? @relation(fields: [propertyRoomId], references: [id])
+
+  hotelRoomId String?
+  hotelRoom   HotelRoom? @relation(fields: [hotelRoomId], references: [id])
+
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id])
+
+  hotelId String?
+  hotel   Hotel?  @relation(fields: [hotelId], references: [id])
+
+  carId String?
+  car   Car?    @relation(fields: [carId], references: [id])
+
+  reservationId String?
+  reservation   Reservation? @relation(fields: [reservationId], references: [id])
+
+  // Availability Tracking
+  totalUnits     Int   @default(1)
+  availableUnits Int   @default(1)
+  bookedUnits    Int   @default(0)
+  blockedUnits   Int   @default(0)
+  specialPricing Json? // [{ startDate: DateTime, endDate: DateTime, price: Float }, ...]
+
+  // Pricing
+  basePrice     Float @default(0)
+  currentPrice  Float @default(0)
+  priceSettings Json?
+  minNights     Int?  @default(1)
+  maxNights     Int?  @default(365)
+  maxGuests     Int   @default(2) // Enforced a default
+
+  discountSettings Json?
+
+  // Dynamic Pricing Adjustments
+  weekendRate        Float?
+  weekdayRate        Float?
+  weekendMultiplier  Float? @default(1)
+  weekdayMultiplier  Float? @default(1)
+  seasonalMultiplier Float? @default(1)
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  Agent     Agent[]
+
+  @@unique([listingId, date]) // Prevent duplicate availability for the same listing & date
+  @@index([date, availableUnits])
+  @@index([propertyRoomId])
+  @@index([isBlocked])
+  @@index([listingId, date]) // Faster queries by listing and date
+}
+
+model Experience {
+  id              String             @id @default(uuid())
+  userId          String
+  date            DateTime
+  href            String
+  title           String
+  description     String?
+  location        Location[]         @relation("LocationExperience")
+  locationId      String?
+  featured        Boolean
+  featuredImage   String?
+  commentCount    Int
+  viewCount       Int
+  like            Boolean
+  category        ExperienceCategory
+  status          Statuses           @default(Active)
+  reviewCount     Int?               @default(0)
+  averageRating   Float?
+  price           Price[]            @relation("ExperiencePrice") // Corrected line
+  maxGuests       Int
+  saleOff         Float?
+  isAds           Boolean?
+  publishedStatus PublishedStatus    @map("publishedStatus")
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+  slug            String             @unique
+  listingId       String?
+  Listing             Listing?            @relation(fields: [listingId], references: [id])
+  user                User                @relation(fields: [userId], references: [id])
+  messages            Message[]           @relation("ExperienceMessages")
+  photos              Photo[]
+  guests              Guest[]
+  reservations        Reservation[]       @relation("ExperienceReservations")
+  reviews             Review[]            @relation("ExperienceReviews")
+  listingNumber       Int?                @unique // Added listingNumber as unique integer
+  workflows           Workflow[]
+  reservationPolicies ReservationPolicy[]
+}
+
+model Car {
+  id               String       @id @default(cuid())
+  cuid             String       @unique
+  href             String
+  title            String
+  description      String? // Optional description
+  listingType      ListingType
+  status           CarStatus
+  brand            String
+  model            String
+  type             VehicleType? // Optional vehicle type
+  year             Int
+  transmission     Transmission
+  fuelType         FuelType
+  driveType        DriveType
+  color            String
+  engineSize       Float
+  mileage          Float
+  numDoors         Int
+  seats            Int? // Optional seats
+  luggage          Int? // Optional luggage
+  price            Price[]      @relation("CarPrice")
+  slug             String       @unique
+  saleOff          Float? // Optional sale off
+  condition        Condition? // Optional condition
+  features         CarFeature[]
+  locationId       String? // Optional location ID
+  userId           String? // Optional user ID
+  availabilityDate DateTime
+
+  reviewCount         Int?                @default(0) // Default review count
+  averageRating       Float?
+  viewCount           Int
+  like                Boolean
+  isAds               Boolean
+  featured            Boolean
+  featuredImage       String? // Optional featured image
+  publishedStatus     PublishedStatus     @map("publishedStatus")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime? // Optional deleted at for soft deletes
+  listingId           String? // Optional listing ID
+  listing             Listing?            @relation(fields: [listingId], references: [id])
+  location            Location?           @relation(fields: [locationId], references: [id])
+  documents           Document[]
+  messages            Message[]
+  passengers          Passenger[]
+  photos              Photo[]
+  reservations        Reservation[]
+  reviews             Review[]            @relation("CarReviews")
+  notifications       Notification[]      @relation("NotificationCar")
+  workflows           Workflow[]
+  availability        Availability[]
+  reservationPolicies ReservationPolicy[]
+  Events              Event[]             @relation("CarEvents")
+
+  @@index([cuid])
+  @@index([slug])
+}
+
+model HotelStaff {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  role         UserRole // Changed from HotelRole to UserRole
+  phone        String?
+  image        String?
+  bio          String?
+  joinedDate   DateTime  @default(now())
+  responseRate Float?    @default(0)
+  responseTime DateTime? // in minutes
+  hotelId      String
+  userId       String?
+
+  hotel         Hotel     @relation(fields: [hotelId], references: [id])
+  managedHotels Hotel[]   @relation("HotelManager")
+  user          User?     @relation("UserHotelStaff", fields: [userId], references: [id])
+  reviews       Review[]  @relation("HotelStaffReviews")
+  averageRating Float?
+  reviewCount   Int?      @default(0)
+  tasks         Task[]    @relation("HotelStaffTasks")
+  reports       Report[]  @relation("HotelStaffReports")
+  listings      Listing[] @relation("HotelStaffListings")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([hotelId])
+  @@index([userId])
+}
+
+model HotelRoom {
+  id            String        @id @default(cuid())
+  name          String
+  roomType      HotelRoomType
+  beds          Int
+  bathrooms     Int
+  allowedGuests Int
+
+  configuration Json?
+  description   String?
+  capacity      Int     @default(1)
+  maxOccupancy  Int     @default(1)
+  bookingRules  Json?
+
+  amenities HotelAmenity[]
+  features  Json?
+  photos    Photo[]
+
+  isActive Boolean @default(true)
+  hotel    Hotel   @relation(fields: [hotelId], references: [id])
+  hotelId  String
+
+  // 🔹 Remove redundant price fields
+  priceId String?
+  price   Price?  @relation(fields: [priceId], references: [id]) // ✅ Price model handles pricing
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+  Availability Availability[]
+}
+
+model Hotel {
+  id               String          @id @default(cuid())
+  name             String
+  slug             String          @unique
+  description      String?
+  stars            Int
+  rooms            HotelRoom[]
+  status           Statuses        @default(Active)
+  phoneNumber      String?
+  email            String?
+  website          String?
+  hotelType        HotelType
+  checkInTime      DateTime?
+  checkOutTime     DateTime?
+  availabilityDate DateTime?
+  averageRating    Float?
+  reviewCount      Int?            @default(0)
+  locationId       String?
+  amenities        HotelAmenity[]
+  saleOff          Float?
+  featured         Boolean
+  featuredImage    String?
+  houseRules       Json?
+  facilities       Facility[]      @relation("HotelFacilities")
+  publishedStatus  PublishedStatus @map("publishedStatus")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+  listingId        String?
+  document         Document[]
+  guest            Guest[]
+  listingNumber    Int?            @unique
+  Listing          Listing?        @relation(fields: [listingId], references: [id])
+  Location         Location?       @relation(fields: [locationId], references: [id])
+  Passenger        Passenger[]
+  photos           Photo[]
+  reservations     Reservation[]   @relation("HotelReservations")
+  reviews          Review[]        @relation("HotelReviews")
+  notifications    Notification[]  @relation("NotificationHotel")
+
+  workflows           Workflow[]
+  staff               HotelStaff[]
+  managerId           String?
+  manager             HotelStaff?         @relation("HotelManager", fields: [managerId], references: [id])
+  reservationPolicies ReservationPolicy[]
+  googlePlaceId       String?
+  chainName           String?
+  brandStandards      Json?
+  seasonalPricing     Json?
+  nearbyAttractions   Json?
+  transportOptions    Json?
+  eventSpaces         Json?
+  ecoCredentials      Json?
+  wellnessServices    Json?
+  sportsFacilities    Json?
+  beachDetails        Json?
+  businessServices    Json?
+  checkInWindow       Int?
+  minStayDuration     Int?
+  maxStayDuration     Int?
+  cancellationPolicy  String?
+  seasonalClosure     Json?
+  starRatingBody      String?
+  lastInspection      DateTime?
+  certifications      String[]
+  awards              Json?
+
+  prices       Price[]        @relation("HotelPrice") // ✅ Price relation
+  Availability Availability[]
+
+  @@index([name])
+  @@index([hotelType])
+  @@index([featured])
+  @@index([reviewCount])
+  @@index([averageRating])
+  @@index([locationId])
+  @@index([publishedStatus])
+  @@index([status])
+}
+
+enum HotelRoomType {
+  SINGLE
+  DOUBLE
+  TWIN
+  SUITE
+  KING
+  QUEEN
+  DOUBLE_DOUBLE
+  TRIPLE
+  QUADRUPLE
+  PENTHOUSE
+}
+
+model Property {
+  id          String         @id @default(cuid())
+  title       String
+  description String
+  price       Price[]        @relation("PropertyPrice")
+  rooms       PropertyRoom[] @relation("PropertyRooms") // ✅ Keep this relation to PropertyRoom
+
+  bathrooms              Int                 @default(1)
+  size                   Int
+  sizePrefix             String              @default("sqft")
+  floor                  Int                 @default(1)
+  buildYear              Int                 @map("build_year")
+  publishedStatus        PublishedStatus
+  featured               Boolean             @default(false)
+  featuredImage          String?
+  virtualTour            String?             @map("virtualTour")
+  energyEfficiencyRating String?             @map("energyEfficiencyRating")
+  videoUrl               String?             @map("videoUrl")
+  furnished              Boolean             @default(false)
+  petFriendly            Boolean             @default(false)
+  garageSpaces           Int                 @default(0)
+  availabilityDate       DateTime
+  isActive               Boolean             @default(true)
+  reviewCount            Int?                @default(0)
+  averageRating          Float?
+  neighborhoodInfo       String?
+  saleOff                Float?              @default(0)
+  userId                 String              @map("userId")
+  owner                  User                @relation(fields: [userId], references: [id])
+  listingId              String?
+  listing                Listing?            @relation(fields: [listingId], references: [id])
+  locationId             String?
+  location               Location?           @relation(fields: [locationId], references: [id])
+  facilityId             String?
+  facility               Facility?           @relation("FacilityProperties", fields: [facilityId], references: [id])
+  agencyId               String?
+  agency                 Agency?             @relation(fields: [agencyId], references: [id])
+  imageRecognition       ImageRecognition[]  @relation("PropertyImageRecognition")
+  propertyAmenities      PropertyAmenities[]
+  facilityAmenities      FacilityAmenities[]
+  locationAmenities      LocationAmenities[]
+  cleaningSupports       CleaningSupport[]
+  documents              Document[]
+  guests                 Guest[]
+  photos                 Photo[]             @relation("PropertyPhotos")
+  reports                Report[]
+  reservations           Reservation[]
+  tasks                  Task[]
+  reviews                Review[]            @relation("PropertyReviews")
+  workflows              Workflow[]
+  reservationPolicies    ReservationPolicy[]
+  type                   PropertyType
+  listingType            ListingType
+  status                 Status
+  contact                Contact
+  slug                   String              @unique
+  listingNumber          Int?                @unique
+  allowedGuests          Int?
+
+  // New fields added
+  cancellationPolicy String?
+  checkInTime        DateTime?
+  checkOutTime       DateTime?
+  specialNotes       String?
+  rules              String?
+  nearbyAttractions  String?
+  transportOptions   String?
+  ecoFriendly        Boolean   @default(false)
+  lastUpdated        DateTime  @updatedAt
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  Availability Availability[]
+  Events       Event[]        @relation("PropertyViewings")
+  Expense      Expense[]
+
+  @@index([title])
+  @@index([type])
+  @@index([status])
+  @@index([listingType])
+  @@index([availabilityDate])
+  @@index([isActive])
+  @@index([userId])
+  @@index([featured])
+  @@index([locationId])
+  @@index([agencyId])
+  @@index([listingId])
+}
+
+model PropertyRoom {
+  id            String           @id @default(cuid())
+  name          String // Name of the room
+  roomType      PropertyRoomType // Type of the room
+  configuration Json? // JSON field for configuration details
+  description   String? // Optional description of the room
+  capacity      Int              @default(1) // Default capacity
+  basePrice     Float?           @default(0) // Base price of the room
+  weekendAmount Float?           @default(0) // Price for weekends
+  weekDayAmount Float?           @default(0) // Price for weekdays
+
+  availability Availability[] // Relation to availability
+  maxOccupancy Int            @default(1) // Maximum occupancy
+  bookingRules Json? // JSON field for booking rules
+
+  amenities Json // JSON field for amenities
+  features  Json? // Optional JSON field for features
+
+  isActive       Boolean          @default(true) // Indicates if the room is active
+  propertyId     String // Foreign key to Property model
+  property       Property         @relation("PropertyRooms", fields: [propertyId], references: [id]) // Ensure this relation is correct
+  createdAt      DateTime         @default(now()) // Timestamp for creation
+  updatedAt      DateTime         @updatedAt // Timestamp for updates
+  deletedAt      DateTime?
+  Price          Price[] // Relation to Price
+  RentalProperty RentalProperty[] // Relation to RentalProperty
+  photos         Photo[] // Relation to Photo
+
+  @@index([propertyId]) // Optional index for propertyId
+}
+
+enum PropertyRoomType {
+  ONE_PLUS_ONE
+  TWO_PLUS_ONE
+  THREE_PLUS_ONE
+  FOUR_PLUS_ONE
+  FIVE_PLUS_ONE
+  SIX_PLUS_ONE
+  SEVEN_PLUS_ONE
+  EIGHT_PLUS_ONE
+  NINE_PLUS_ONE
+  TEN_PLUS_ONE
+
+  DUPLEX
+  PENTHOUSE
+}
+
+model Agent {
+  id               String        @id @default(cuid())
+  cuid             String        @unique @default(uuid())
+  name             String
+  email            String        @unique
+  phone            String
+  image            String?
+  bio              String?
+  language         Language[]
+  description      String?
+  shortDescription String?
+  slug             String        @unique
+  agencyId         String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @default(now()) @updatedAt
+  deletedAt        DateTime?
+  locationId       String?
+  isVerified       Boolean       @default(false)
+  isActive         Boolean       @default(true)
+  isFeatured       Boolean       @default(false)
+  rating           Float         @default(0)
+  reviewCount      Int           @default(0)
+  experience       Int           @default(0)
+  specialties      String[]
+  availability     Availability? @relation(fields: [availabilityId], references: [id])
+  workingHours     Json?
+  contact         Contact[]
+  website          String?
+  socialMedia      Json?
+  documents        Document[]
+  listings         Listing[]     @relation("AgentListings")
+  reservations     Reservation[] @relation("AgentReservation")
+  photos           Photo[]
+  reviews          Review[]      @relation("AgentReviews")
+  guests           Guest[]       @relation("AgentToGuest")
+  tasks            Task[]        @relation("AgentTasks")
+  testimonials     Testimonial[]
+  awards           Award[]
+  partnerships     Partnership[]
+  subscriptions    Membership[]
+  agency           Agency        @relation(fields: [agencyId], references: [id])
+  location         Location?     @relation(fields: [locationId], references: [id])
+  availabilityId   String?
+
+  @@index([email, agencyId])
+  @@index([locationId])
+  @@index([agencyId])
+  @@index([name])
+  @@index([slug])
+  @@index([isVerified])
+  @@index([isFeatured])
+  @@index([rating])
+  @@index([isActive])
+}
+
+model Agency {
+  id               String     @id @default(cuid())
+  cuid             String     @unique
+  name             String
+  type             AgencyType
+  website          String?
+  phone            String?
+  Location         Location?  @relation(fields: [locationId], references: [id])
+  locationId       String?
+  slug             String     @unique
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+  description      String?
+  shortDescription String?
+  logo             String?
+  coverImage       String?
+  socialMedia      Json?
+  languages        Language[]
+  contact          Contact[]
+
+  rating        Float   @default(0)
+  reviewCount   Int     @default(0)
+  isVerified    Boolean @default(false)
+  isFeatured    Boolean @default(false)
+  isActive      Boolean @default(true)
+  businessHours Json?
+
+  specialties     String[]
+  membershipLevel String?
+  memberSince     DateTime?
+  lastActive      DateTime?
+  agents          Agent[]
+  properties      Property[]
+  listings        Listing[]     @relation("AgencyListings")
+  photos          Photo[]
+  Document        Document[]
+  reviews         Review[]      @relation("AgencyReviews")
+  testimonials    Testimonial[]
+  awards          Award[]
+  partnerships    Partnership[]
+  subscriptions   Membership[]
+
+  @@index([type])
+  @@index([isFeatured])
+  @@index([isVerified])
+  @@index([rating])
+}
+
+enum FeedbackType {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  SUGGESTION
+  COMPLAINT
+}
+
+model Feedback {
+  id               String          @id @default(cuid()) // Unique identifier for the feedback
+  userId           String
+  content          String
+  rating           Int
+  queryId          String? // Optional reference to SearchQuery model
+  recommendationId String? // Optional reference to Recommendation model
+  feedbackType     FeedbackType
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+  user             User            @relation(fields: [userId], references: [id]) // Relation to User model
+  recommendation   Recommendation? @relation(fields: [recommendationId], references: [id])
+  searchQuery      SearchQuery?    @relation(fields: [queryId], references: [id])
+
+  @@index([userId]) // Index for faster queries on userId
+  @@index([rating])
+}
+
+enum Statuses {
+  Active
+  Inactive
+  Pending
+  Deleted
+}
+
 model User {
   id               String            @id @default(cuid())
+  cuid             String            @unique @default(uuid())
+  userName         String?           @unique
   name             String?
+  type             UserRole          @default(User)
+  image            String?
+  bgImage          String?
+  profileUrl       String?
   email            String?           @unique
   emailVerified    DateTime?
-  image            String?
+  responseRate     Float?            @default(0)
+  responseTime     DateTime?         @default(now())
+  isVerified       Boolean           @default(false)
   password         String?
-  role             UserRole          @default(User)
+  status           Statuses          @default(Active)
+  language         Language[]        @default([])
+  phone            String?
+  count            Int               @default(0)
+  href             String?
+  jobName          String?
+  bio              String?
+  gender           Gender?
+  birthday         DateTime?
+  starRating       Float?
+  slug             String?           @unique
+  lastActiveAt     DateTime?
+  permissions      UserPermission[]
+  locationId       String?
+  offerId          String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
-  listings         Listing[]
-  favorites        Listing[]         @relation("FavoriteListings")
-  messages         Message[]         @relation("MessageSender")
+  deletedAt        DateTime?
+  lastLoginAt      DateTime?
+  token            String?
+  insuranceId      String?
+  resetToken       String?           @unique
+  resetTokenExpiry DateTime?
+  socialMedia      Json?
+  hotelStaff       HotelStaff[]      @relation("UserHotelStaff")
+  properties       Property[]
+  authenticators   Authenticator[]
+  blogs            Blog[]
+  channelUsers     ChannelUser[]
+  coupons          Coupon[]
+  documents        Document[]
+  facilities       Facility[]        @relation("FacilityAuthorizedUsers")
+  helpRequests     Help[]            @relation("AssignedHelpRequests")
+  likes            Like[]
+  listings         Listing[]         @relation("UserListings")
+  mentionedIn      Mention[]         @relation("MentionedUser")
+  mentions         Mention[]         @relation("UserMentions")
   receivedMessages Message[]         @relation("UserMessages")
-  reviews          Review[]
-  bookings         Booking[]
-  accounts         Account[]
-  sessions         Session[]
+  sentMessages     Message[]         @relation("MessageSender")
   notifications    Notification[]
+  offers           Offer[]
+  payments         Payment[]
+  workflows        Workflow[]
+  workflowTasks    WorkflowTask[]
+  workflowLogs     WorkflowLog[]
+  workflowTriggers WorkflowTrigger[]
+  payouts          Payout[]
+  photos           Photo[]
+  preferences      Preferences?
+  rentals          RentalProperty[]  @relation("UserRentalProperties")
+  reports          Report[]
+  reservations     Reservation[]
+  sessions         Session[]
+
+  tasksAssigned      Task[]            @relation("TaskAssignee")
+  tokens             Token[]
+  location           Location?         @relation("UserLocation", fields: [locationId], references: [id])
+  userFavorites      UserFavorite[]
+  accounts           Account[]
+  reviews            Review[]
+  favoriteListings   Listing[]         @relation("FavoriteListings")
+  followedInsurances Insurance[]       @relation("UserFollowedInsurances")
+  followedRentals    RentalProperty[]  @relation("UserFollowedRentals")
+  insurances         Insurance[]       @relation("UserInsurance")
+  analytics          Analytics[]       @relation("UserAnalytics")
+  Membership         Membership[]
+  feedback           Feedback[]
+  // Add proper Expense relations
+  expensesPaid       Expense[]         @relation("ExpensePayer")
+  expensesApproved   Expense[]         @relation("ExpenseApprovals")
+  Experience         Experience[]
+  RentalProperty     RentalProperty[]
+  SearchQuery        SearchQuery[]
+  Recommendation     Recommendation[]
+  MessageReaction    MessageReaction[]
+  Testimonial        Testimonial[]
+  awards             Award[]
+  partnerships       Partnership[]
+
+  @@index([email], map: "idx_email")
+  @@index([id], map: "idxId")
+  @@index([locationId])
+  @@index([userName])
+  @@index([type])
+}
+
+model Analytics {
+  id                  String   @id @default(cuid())
+  userId              String?
+  event               String
+  timestamp           DateTime @default(now())
+  metadata            Json?
+  listingCount        Int      @default(0)
+  reservationCount    Int      @default(0)
+  carCount            Int      @default(0)
+  propertyCount       Int      @default(0)
+  hotelCount          Int      @default(0)
+  experienceCount     Int      @default(0)
+  offerCount          Int      @default(0)
+  paymentCount        Int      @default(0)
+  payoutCount         Int      @default(0)
+  refundCount         Int      @default(0)
+  expenseCount        Int      @default(0)
+  reviewCount         Int?     @default(0)
+  messageCount        Int      @default(0)
+  taskCount           Int      @default(0)
+  reportCount         Int      @default(0)
+  photoCount          Int      @default(0)
+  documentCount       Int      @default(0)
+  rentalPropertyCount Int      @default(0)
+  sessionCount        Int      @default(0)
+
+  cancelledReservations  Int @default(0)
+  cancelledOffers        Int @default(0)
+  cancelledEvents        Int @default(0)
+  cancelledTransactions  Int @default(0)
+  cancelledExperiences   Int @default(0)
+  PropertyForSaleCount   Int @default(0)
+  PropertyForRentCount   Int @default(0)
+  HotelForSaleCount      Int @default(0)
+  HotelForRentCount      Int @default(0)
+  ExperienceForSaleCount Int @default(0)
+  ExperienceForRentCount Int @default(0)
+  CarForSaleCount        Int @default(0)
+  CarForRentCount        Int @default(0)
+  BookingCarCount        Int @default(0)
+  BookingExperienceCount Int @default(0)
+  BookingHotelCount      Int @default(0)
+  BookingPropertyCount   Int @default(0)
+  ForRentCarCount        Int @default(0)
+  ForRentExperienceCount Int @default(0)
+  ForRentHotelCount      Int @default(0)
+  ForRentPropertyCount   Int @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  user      User?     @relation("UserAnalytics", fields: [userId], references: [id]) // Relation to User model
+
+  @@index([userId])
+  @@index([event])
+  @@index([timestamp])
+  @@index([listingCount])
+  @@index([reservationCount])
+  @@index([carCount])
+  @@index([propertyCount])
+  @@index([hotelCount])
+  @@index([experienceCount])
+  @@index([offerCount])
+  @@index([paymentCount])
+  @@index([payoutCount])
+  @@index([refundCount])
+  @@index([expenseCount])
+  @@index([reviewCount])
+  @@index([messageCount])
+  @@index([taskCount])
+  @@index([reportCount])
+}
+
+model Airline {
+  id              String    @id @default(cuid())
+  cuid            String    @unique @default(uuid())
+  name            String    @unique
+  code            String    @unique
+  country         String
+  website         String    @default("")
+  logoUrl         String    @default("")
+  establishedYear Int?      @default(0)
+  fleetSize       Int?      @default(0)
+  reviewCount     Int?      @default(0)
+  averageRating   Float?
+  destinations    Int?      @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  reviews         Review[]  @relation("AirlineReviews")
+
+  @@index([name], map: "airline_nameIdx")
+}
+
+enum CarStatus {
+  New
+  Used
+  Certified
+}
+
+model Coupon {
+  id           String    @id @default(cuid())
+  cuid         String    @unique @default(uuid())
+  code         String    @unique
+  value        Float
+  isPercentage Boolean
+  startDate    DateTime
+  endDate      DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+  deletedAt    DateTime?
+  userId       String
+  User         User      @relation(fields: [userId], references: [id])
+  Payment      Payment[]
+
+  @@index([userId])
+}
+
+model Document {
+  id            String    @id @default(cuid())
+  cuid          String    @unique @default(uuid())
+  url           String
+  carId         String?
+  propertyId    String?
+  hotelId       String?
+  userId        String?
+  agencyId      String?
+  agentId       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+  deletedAt     DateTime?
+  slug          String    @unique
+  taskId        String?
+  FacilityId    String?
+  listingId     String?
+  reservationId String?
+  messageId     String?
+  expenseId     String?
+
+  // Relations
+  Facility         Facility?       @relation(fields: [FacilityId], references: [id])
+  agency           Agency?         @relation(fields: [agencyId], references: [id])
+  agent            Agent?          @relation(fields: [agentId], references: [id])
+  property         Property?       @relation(fields: [propertyId], references: [id])
+  car              Car?            @relation(fields: [carId], references: [id])
+  hotel            Hotel?          @relation(fields: [hotelId], references: [id])
+  Listing          Listing?        @relation(fields: [listingId], references: [id])
+  Message          Message?        @relation(fields: [messageId], references: [id])
+  Reservation      Reservation?    @relation(fields: [reservationId], references: [id])
+  user             User?           @relation(fields: [userId], references: [id])
+  RentalProperty   RentalProperty? @relation(fields: [rentalPropertyId], references: [id])
+  rentalPropertyId String?
+  expense          Expense?        @relation("ExpenseDocuments", fields: [expenseId], references: [id])
+
+  @@index([propertyId, reservationId, listingId])
+}
+
+enum EventStatus {
+  NEW
+  DRAFT
+  DONE
+  SUSPENDED
+  CANCELLED
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  cuid        String      @unique @default(uuid())
+  title       String
+  description String
+  status      EventStatus @default(DRAFT)
+  locationId  String?
+  location    Location?   @relation(fields: [locationId], references: [id])
+  propertyId  String? // Add this field
+  carId       String?
+  car         Car?        @relation("CarEvents", fields: [carId], references: [id]) // Add this relation
+
+  property          Property? @relation("PropertyViewings", fields: [propertyId], references: [id]) // Add this relation
+  startTime         DateTime
+  endTime           DateTime
+  organizerAgencyId String?
+  organizerAgentId  String?
+  attendees         Int?
+  reviewCount       Int?      @default(0)
+  averageRating     Float?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+  deletedAt         DateTime?
+  reviews           Review[]  @relation("EventReviews")
+  featuredImage     String?
+}
+
+model Facility {
+  id               String       @id @default(cuid())
+  cuid             String       @unique @default(uuid())
+  name             String
+  details          String
+  facilityType     FacilityType
+  status           Statuses     @default(Active)
+  slug             String       @unique
+  locationId       String?
+  featuredImage    String?
+  unitCount        Int
+  reviewCount      Int?         @default(0)
+  averageRating    Float?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+  authorizedUserId String?
+  properties       Property[]   @relation("FacilityProperties")
+  documents        Document[]
+  authorizedUser   User?        @relation("FacilityAuthorizedUsers", fields: [authorizedUserId], references: [id])
+  location         Location?    @relation(fields: [locationId], references: [id])
+  helpRequests     Help[]       @relation("FacilityHelpRequests")
+  listings         Listing[]
+  photos           Photo[]
+
+  hotels   Hotel[]   @relation("HotelFacilities")
+  reviews  Review[]  @relation("FacilityReviews")
+  expenses Expense[] @relation("FacilityExpenses")
+
+  @@index([facilityType, name])
+  @@index([authorizedUserId])
+  @@index([locationId])
+  @@index([slug])
+  @@index([status])
+  @@index([averageRating])
+  @@index([reviewCount])
+  @@index([unitCount])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Guest {
+  id             String   @id @default(cuid())
+  cuid           String   @unique @default(uuid())
+  email          String   @unique
+  phone          String
+  name           String
+  dateOfBirth    DateTime
+  nationality    String
+  passportNumber String?
+  address        String?
+  city           String?
+  country        String?
+  image          String
+
+  preferredLanguage String?
+  specialRequests   String?
+  loyaltyPoints     Int                @default(0)
+  isVIP             Boolean            @default(false)
+  hotelId           String?
+  propertyId        String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  reviewCount       Int?               @default(0)
+  averageRating     Float?
+  property          Property?          @relation(fields: [propertyId], references: [id])
+  hotel             Hotel?             @relation(fields: [hotelId], references: [id])
+  compositions      GuestComposition[]
+  payments          Payment[]
+  reservations      Reservation[]
+  experience        Experience[]
+  reviews           Review[]           @relation("GuestReviews")
+
+  agent   Agent?  @relation("AgentToGuest", fields: [agentId], references: [id])
+  agentId String?
+
+  @@index([email], map: "guest_email_index")
+  @@index([name], map: "guest_name_index")
+  @@index([hotelId], map: "guest_hotelId_index")
+  @@index([propertyId], map: "guest_propertyId_index")
+  @@index([deletedAt], map: "guest_deletedAt_index")
+  @@index([createdAt], map: "guest_createdAt_index")
+  @@index([updatedAt], map: "guest_updatedAt_index")
+  @@index([reviewCount], map: "guest_reviewCount_index")
+  @@index([averageRating], map: "guest_averageRating_index")
+  @@index([nationality], map: "guest_nationality_index")
+  @@index([phone], map: "guest_phone_index")
+}
+
+model GuestComposition {
+  id         String    @id @default(cuid())
+  guestId    String
+  adultCount Int       @default(1)
+  childCount Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  guest      Guest     @relation(fields: [guestId], references: [id])
+
+  @@index([guestId], map: "guestComposition_guestId_index")
+  @@index([deletedAt], map: "guestComposition_deletedAt_index")
+  @@index([createdAt], map: "guestComposition_createdAt_index")
+  @@index([updatedAt], map: "guestComposition_updatedAt_index")
+}
+
+model Flight {
+  id               String      @id @default(cuid())
+  cuid             String      @unique @default(uuid())
+  flightNumber     String
+  departureAirport String
+  arrivalAirport   String
+  departureTime    DateTime
+  arrivalTime      DateTime
+  reviewCount      Int?        @default(0)
+  averageRating    Float?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @default(now()) @updatedAt
+  deletedAt        DateTime?
+  Passenger        Passenger[]
+  reviews          Review[]    @relation("FlightReviews")
+
+  @@index([flightNumber], map: "flightNumber_index")
+  @@index([departureAirport], map: "departureAirport_index")
+  @@index([arrivalAirport], map: "arrivalAirport_index")
+  @@index([createdAt], map: "flight_createdAt_index")
+  @@index([updatedAt], map: "flight_updatedAt_index")
+}
+
+model Hashtag {
+  id          String    @id @default(cuid())
+  cuid        String    @unique @default(uuid())
+  name        String
+  contentType String
+  contentId   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  messages    Message[] @relation("HashtagToMessage")
+
+  @@index([name], map: "hashtag_name_index")
+  @@index([contentType, contentId], map: "hashtag_contentType_contentId_index")
+  @@index([deletedAt], map: "hashtag_deletedAt_index")
+  @@index([createdAt], map: "hashtag_createdAt_index")
+  @@index([updatedAt], map: "hashtag_updatedAt_index")
+}
+
+model Label {
+  id        String    @id @default(cuid())
+  cuid      String    @unique @default(uuid())
+  name      String
+  color     String
+  createdAt DateTime?
+  updatedAt DateTime?
+  deletedAt DateTime?
+
+  @@index([name], map: "label_name_index")
+  @@index([deletedAt], map: "label_deletedAt_index")
+  @@index([createdAt], map: "label_createdAt_index")
+  @@index([updatedAt], map: "label_updatedAt_index")
+}
+
+model Location {
+  id          String    @id @default(cuid())
+  cuid        String    @unique @default(uuid())
+  title       String
+  unitNo      Int? // 
+  block       String?
+  buildingNo  Int?
+  details     String?
+  address     String
+  street      String
+  city        String
+  state       String
+  postCode    String    @map("postCode")
+  country     String
+  countryCode String    @map("countryCode")
+  latitude    Float?
+  longitude   Float?
+  slug        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  agencies   Agency[]
+  agents     Agent[]
+  properties Property[] //
+  cars       Car[]
+
+  facilities  Facility[]
+  hotels      Hotel[]
+  Experiences Experience[] @relation("LocationExperience")
+
+  markers  Marker[] 
+  users    User[]    @relation("UserLocation")
+  listings Listing[] @relation("ListingToLocation")
+  events   Event[]
+
+  @@index([city, state, postCode], map: "idx_location")
+  @@index([latitude, longitude], map: "idx_coordinates") // 
+  @@index([deletedAt], map: "location_deletedAt_index")
+  @@index([createdAt], map: "location_createdAt_index")
+  @@index([updatedAt], map: "location_updatedAt_index")
+}
+
+model Marker {
+  id         String    @id @default(cuid())
+  cuid       String    @unique @default(uuid())
+  markerType String
+  slug       String    @unique
+  latitude   Float
+  longitude  Float
+  locationId String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  location   Location  @relation(fields: [locationId], references: [id])
+
+  @@index([latitude, longitude])
+  @@index([deletedAt], map: "marker_deletedAt_index")
+  @@index([createdAt], map: "marker_createdAt_index")
+  @@index([updatedAt], map: "marker_updatedAt_index")
+  @@index([locationId], map: "marker_locationId_index")
+  @@index([markerType], map: "marker_markerType_index")
 }
 
 model Account {
-  id                String  @id @default(cuid())
+  id                String      @id @default(cuid())
   userId            String
-  type              String
+  type              AccountType
+  authType          AuthType
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  deletedAt         DateTime?
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@index([deletedAt], map: "account_deletedAt_index")
+  @@index([createdAt], map: "account_createdAt_index")
+  @@index([updatedAt], map: "account_updatedAt_index")
+  @@index([provider], map: "account_provider_index")
+  @@index([providerAccountId], map: "account_providerAccountId_index")
+  @@map("accounts")
+}
+
+enum AuthType {
+  OAUTH // For basic OAuth2 providers
+  OIDC // For OpenID Connect (Google, etc)
+  EMAIL // For email-based auth
+  CREDENTIALS // For username/password auth
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  @@id([identifier, token])
+  @@index([deletedAt], map: "verificationToken_deletedAt_index")
+  @@index([createdAt], map: "verificationToken_createdAt_index")
+  @@index([updatedAt], map: "verificationToken_updatedAt_index")
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
+  id           String    @id @default(cuid()) @map("Id")
+  cuid         String    @unique @default(uuid())
+  sessionToken String    @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model Listing {
-  id              String          @id @default(cuid())
-  title           String
-  description     String
-  category        Category
-  listingType     ListingType
-  price           Float
-  currency        Currency        @default(USD)
-  location        String
-  images          String[]
-  userId          String
-  user            User            @relation(fields: [userId], references: [id])
-  favoritedBy     User[]          @relation("FavoriteListings")
-  publishedStatus PublishedStatus @default(ACTIVE)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  messages        Message[]
-  reviews         Review[]
-  bookings        Booking[]
-  features        Json?           // Store category-specific features
-  amenities       String[]        // For properties, hotels, etc.
-  coordinates     Coordinates?    // Location coordinates
-  views           Int             @default(0)
+model Authenticator {
+  credentialID         String    @unique
+  userId               String
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+  @@index([deletedAt], map: "authenticator_deletedAt_index")
+  @@index([createdAt], map: "authenticator_createdAt_index")
+  @@index([updatedAt], map: "authenticator_updatedAt_index")
 }
 
-model Coordinates {
-  id        String   @id @default(cuid())
-  latitude  Float
-  longitude Float
-  listingId String   @unique
-  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model UserFavorite {
+  id         String    @unique
+  userId     String    @unique
+  listingId  String
+  isFavorite Boolean
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  listing    Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, listingId])
+  @@index([userId], map: "userFavorite_userId_index")
+  @@index([listingId], map: "userFavorite_listingId_index")
+  @@index([deletedAt], map: "userFavorite_deletedAt_index")
+  @@index([createdAt], map: "userFavorite_createdAt_index")
+  @@index([updatedAt], map: "userFavorite_updatedAt_index")
+}
+
+model MegaMenu {
+  id           String    @id @default(cuid())
+  appName      String
+  carModel     String
+  city         String
+  company      String
+  construction String
+  corporate    String
+  country      String
+  department   String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([deletedAt], map: "megaMenu_deletedAt_index")
+  @@index([createdAt], map: "megaMenu_createdAt_index")
+  @@index([updatedAt], map: "megaMenu_updatedAt_index")
+}
+
+enum MessagePlatform {
+  INTERNAL
+  WHATSAPP
+  TELEGRAM
+  IMESSAGE
+  GOOGLE_MESSAGE
+}
+
+enum MessageStatus {
+  PENDING
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  DELETED
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid()) // Unique identifier for the reaction
+  messageId String // ID of the message being reacted to
+  userId    String // ID of the user who added the reaction
+  emoji     String // The emoji used as reaction (e.g., "👍", "❤️", "😂")
+  createdAt DateTime @default(now()) // When the reaction was added
+  updatedAt DateTime @updatedAt // When the reaction was last updated
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id]) // Link to the message
+  user    User    @relation(fields: [userId], references: [id]) // Link to the user
+
+  // Constraints and Indexes
+  @@unique([messageId, userId, emoji]) // One user can only add one of each emoji to a message
+  @@index([messageId]) // Optimize queries for reactions by message
+  @@index([userId]) // Optimize queries for reactions by user
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  LOCATION
+  CONTACT
+  SYSTEM
+  NOTIFICATION
+}
+
+enum MessagePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }
 
 model Message {
-  id         String   @id @default(cuid())
-  content    String
+  id   String @id @default(cuid())
+  cuid String @unique @default(uuid())
+
+  // Core message fields
+  content  String
+  type     MessageType     @default(TEXT)
+  platform MessagePlatform @default(INTERNAL)
+  status   MessageStatus   @default(PENDING)
+  priority MessagePriority @default(MEDIUM)
+
+  // Sender and receiver
   senderId   String
   receiverId String
-  listingId  String?
-  isRead     Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  sender     User     @relation("MessageSender", fields: [senderId], references: [id])
-  receiver   User     @relation("UserMessages", fields: [receiverId], references: [id])
-  listing    Listing? @relation(fields: [listingId], references: [id])
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  readAt      DateTime?
+  seenAt      DateTime?
+  deletedAt   DateTime?
+  scheduledAt DateTime? // For scheduled messages
+  deliveredAt DateTime? // When message is delivered to external platform
+
+  // External platform specific fields
+  externalId   String? // External platform message ID
+  externalData Json? // Platform-specific data (metadata, formatting, etc.)
+  retryCount   Int       @default(0)
+  lastRetryAt  DateTime?
+  errorMessage String? // Store error details if message fails
+
+  // Message context
+  listingId     String?
+  carId         String?
+  paymentId     String?
+  taskId        String?
+  reservationId String?
+  experienceId  String?
+  channelId     String?
+  helpId        String?
+  replyToId     String? // For message threading
+  threadId      String? // Group messages in a thread
+
+  // Media and attachments
+  mediaUrl     String? // URL to stored media
+  mediaSize    Int? // Size in bytes
+  mediaType    String? // MIME type
+  thumbnailUrl String? // For media previews
+
+  // Relations
+  documents Document[]
+  mentions  Mention[]
+  hashtags  Hashtag[]         @relation("HashtagToMessage")
+  reactions MessageReaction[] // New relation for message reactions
+
+  // Existing relations
+  car          Car?          @relation(fields: [carId], references: [id])
+  channel      Channel?      @relation("ChannelMessages", fields: [channelId], references: [id])
+  experience   Experience?   @relation("ExperienceMessages", fields: [experienceId], references: [id])
+  help         Help?         @relation("HelpMessages", fields: [helpId], references: [id])
+  listing      Listing?      @relation(fields: [listingId], references: [id])
+  payment      Payment?      @relation(fields: [paymentId], references: [id])
+  receiver     User          @relation("UserMessages", fields: [receiverId], references: [id])
+  reservation  Reservation?  @relation(fields: [reservationId], references: [id])
+  sender       User          @relation("MessageSender", fields: [senderId], references: [id])
+  task         Task?         @relation(fields: [taskId], references: [id])
+  notification Notification?
+  replyTo      Message?      @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies      Message[]     @relation("MessageReplies")
+
+  // Add Workflow Relations
+  workflowId     String?
+  workflowTaskId String?
+  workflow       Workflow?     @relation(fields: [workflowId], references: [id])
+  workflowTask   WorkflowTask? @relation(fields: [workflowTaskId], references: [id])
+
+  // Add Translation Relations
+  originalLanguage  String?
+  translatedContent String?
+  translationStatus TranslationStatus?
+  translations      Translation[]
+
+  // Add WorkflowLog Relation
+  workflowLogs WorkflowLog[] @relation("MessageLogs")
+
+  // Indexes
+  @@index([senderId], map: "message_senderId_index")
+  @@index([receiverId], map: "message_receiverId_index")
+  @@index([channelId], map: "message_channelId_index")
+  @@index([deletedAt], map: "message_deletedAt_index")
+  @@index([createdAt], map: "message_createdAt_index")
+  @@index([updatedAt], map: "message_updatedAt_index")
+  @@index([status], map: "message_status_index")
+  @@index([platform], map: "message_platform_index")
+  @@index([threadId], map: "message_thread_index")
 }
 
-model Review {
-  id        String   @id @default(cuid())
-  rating    Float
-  content   String?
-  userId    String
-  listingId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
-  listing   Listing  @relation(fields: [listingId], references: [id])
-}
+model Mention {
+  id              String        @id @default(cuid())
+  cuid            String        @unique @default(uuid())
+  userId          String
+  mentionedUserId String
+  contentType     String
+  contentId       String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+  messageId       String?
+  notificationId  String?       @unique
+  mentionedUser   User          @relation("MentionedUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+  message         Message?      @relation(fields: [messageId], references: [id])
+  user            User          @relation("UserMentions", fields: [userId], references: [id], onDelete: Cascade)
+  notification    Notification? @relation("MentionNotifications", fields: [notificationId], references: [id], onDelete: Cascade)
 
-model Booking {
-  id          String        @id @default(cuid())
-  startDate   DateTime
-  endDate     DateTime
-  totalPrice  Float
-  currency    Currency      @default(USD)
-  status      BookingStatus @default(PENDING)
-  userId      String
-  listingId   String
-  guestCount  Int?
-  specialRequests String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [id])
-  listing     Listing       @relation(fields: [listingId], references: [id])
-  payments    Payment[]
-}
-
-model Payment {
-  id          String        @id @default(cuid())
-  amount      Float
-  currency    Currency      @default(USD)
-  status      PaymentStatus @default(PENDING)
-  method      PaymentMethod
-  bookingId   String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  booking     Booking       @relation(fields: [bookingId], references: [id])
+  @@index([userId], map: "mention_userId_index")
+  @@index([mentionedUserId], map: "mention_mentionedUserId_index")
+  @@index([contentType, contentId], map: "mention_contentType_contentId_index")
+  @@index([deletedAt], map: "mention_deletedAt_index")
+  @@index([createdAt], map: "mention_createdAt_index")
+  @@index([updatedAt], map: "mention_updatedAt_index")
+  @@index([messageId], map: "mention_messageId_index")
+  @@index([notificationId], map: "mention_notificationId_index")
 }
 
 model Notification {
-  id        String             @id @default(cuid())
-  type      NotificationType
-  content   String
-  isRead    Boolean            @default(false)
-  userId    String
-  createdAt DateTime           @default(now())
-  user      User               @relation(fields: [userId], references: [id])
+  id               String           @id @default(cuid())
+  cuid             String           @unique @default(uuid())
+  name             String
+  title            String
+  image            String
+  link             String?
+  type             NotificationType
+  content          String
+  isRead           Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  readAt           DateTime?
+  deletedAt        DateTime?
+  userId           String
+  messageId        String?          @unique
+  carId            String?
+  hotelId          String?
+  ticketId         String?
+  rentalPropertyId String?
+  mentionId        String?          @unique
+  workflowId       String?
+
+  message Message? @relation(fields: [messageId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+
+  listingId         String?
+  listing           Listing?         @relation("NotificationListing", fields: [listingId], references: [id])
+  offerId           String?
+  offer             Offer?           @relation("NotificationOffer", fields: [offerId], references: [id])
+  reservationId     String?
+  reservation       Reservation?     @relation("NotificationReservation", fields: [reservationId], references: [id], map: "NotificationReservation_fkey")
+  paymentId         String?
+  payment           Payment?         @relation("NotificationPayment", fields: [paymentId], references: [id], map: "NotificationPayment_fkey")
+  bitcoinPaymentId  String?
+  bitcoinPayment    BitcoinPayment?  @relation(fields: [bitcoinPaymentId], references: [id])
+  refundId          String?
+  refund            Refund?          @relation("NotificationRefund", fields: [refundId], references: [id], map: "NotificationRefund_fkey")
+  insuranceId       String?
+  insurance         Insurance?       @relation("NotificationInsurance", fields: [insuranceId], references: [id], map: "NotificationInsurance_fkey")
+  helpId            String?
+  help              Help?            @relation("NotificationHelp", fields: [helpId], references: [id], map: "NotificationHelp_fkey")
+  cleaningSupportId String?
+  cleaningSupport   CleaningSupport? @relation("NotificationCleaningSupport", fields: [cleaningSupportId], references: [id], map: "NotificationCleaningSupport_fkey")
+  reviewId          String?
+  review            Review?          @relation("NotificationReview", fields: [reviewId], references: [id], map: "NotificationReview_fkey")
+  expenseId         String? // Optional reference to the associated expense
+  expense           Expense?         @relation(fields: [expenseId], references: [id])
+  taskId            String? // Optional reference to the associated task
+  task              Task?            @relation("TaskNotifications", fields: [taskId], references: [id]) // Relation to Task
+
+  hotel     Hotel?     @relation("NotificationHotel", fields: [hotelId], references: [id])
+  mentions  Mention[]  @relation("MentionNotifications")
+  workflows Workflow[] @relation("NotificationWorkflow")
+  car       Car?       @relation("NotificationCar", fields: [carId], references: [id])
+
+  @@index([userId])
+  @@index([type])
 }
 
-// Enums
-enum UserRole {
-  Admin
-  User
-  Agent
-  Agency
+model Blog {
+  id             String       @id @default(cuid())
+  cuid           String       @unique
+  title          String
+  blogCategoryId String
+  content        String
+  slug           String       @unique
+  publishedAt    DateTime
+  featuredImage  String
+  description    String
+  href           String
+  commentCount   Int          @default(0)
+  viewCount      Int          @default(0)
+  readingTime    Int          @default(0)
+  userId         String
+  postType       String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  blogCategory   BlogCategory @relation("BlogCategoryRelation", fields: [blogCategoryId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+  Bookmark       Bookmark?
+  Photo          Photo[]
+  tags           Tag[]
+  reviews        Review[]     @relation("BlogReviews")
+}
+
+model BlogCategory {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  blogs     Blog[]    @relation("BlogCategoryRelation")
+}
+
+model Bookmark {
+  id           String    @id @default(cuid())
+  cuid         String    @unique @default(uuid())
+  name         String
+  blogId       String    @unique
+  count        Int
+  isBookmarked Boolean
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  Blog         Blog      @relation(fields: [blogId], references: [id])
+}
+
+model Listing {
+  id              String          @id @default(cuid()) // Unique ID for each listing
+  providerId      String // Foreign key to Provider
+  provider        Provider        @relation(fields: [providerId], references: [id]) // Relation to Provider
+  cuid            String          @unique @default(uuid()) // Unique CUID for listing
+  title           String // Title of the listing
+  description     String // Description of the listing
+  category        Category // Category of the listing
+  listingType     ListingType // Type of the listing
+  price           Price[]         @relation("ListingPrice") // Price relation
+  priceSnapshots  PriceSnapshot[] @relation("ListingPriceSnapshots") // Price snapshot relation
+  slug            String          @unique // URL-friendly slug for the listing
+  publishedStatus PublishedStatus // Published status of the listing
+  likesCount      Int             @default(0) // Track the number of likes
+  reviewCount     Int?            @default(0) // Track the number of reviews
+  averageRating   Float? // Average rating of the listing
+  featuredImage   String? // Featured image for the listing
+  isActive        Boolean         @default(true) // Whether the listing is active
+  featured        Boolean         @default(false) // Whether the listing is featured
+  userId          String? // Foreign key to User
+  agentId         String? // Foreign key to Agent
+  agencyId        String? // Foreign key to Agency
+  helpId          String? // Foreign key to Help
+  reportId        String? // Foreign key to Report
+  facilityId      String? // Foreign key to Facility
+  locationId      String? // Foreign key to Location
+  hotelStaffId    String? // Foreign key to Hotel Staff
+  Property        Property[] // Relation to Property
+  Car             Car[] // Relation to Car
+  Document        Document[] // Relation to Document
+  Experience      Experience[] // Relation to Experience
+  Hotel           Hotel[] // Relation to Hotel
+  Like            Like[] // Relation to Likes
+  agency          Agency?         @relation("AgencyListings", fields: [agencyId], references: [id]) // Optional relation to Agency
+  agent           Agent?          @relation("AgentListings", fields: [agentId], references: [id]) // Optional relation to Agent
+  facility        Facility?       @relation(fields: [facilityId], references: [id]) // Optional relation to Facility
+  help            Help?           @relation("HelpListings", fields: [helpId], references: [id]) // Optional relation to Help
+  Report          Report?         @relation(fields: [reportId], references: [id]) // Optional relation to Report
+  user            User?           @relation("UserListings", fields: [userId], references: [id]) // Optional relation to User
+  location        Location[]      @relation("ListingToLocation") // Relation to Location
+  hotelStaff      HotelStaff?     @relation("HotelStaffListings", fields: [hotelStaffId], references: [id]) // Optional relation to Hotel Staff
+  messages        Message[] // Relation to Messages
+  Offers          Offer[] // Relation to Offers
+  payouts         Payout[] // Relation to Payouts
+  photos          Photo[] // Relation to Photos
+  UserFavorite    UserFavorite[] // Relation to UserFavorites
+  reviews         Review[]        @relation("ListingReviews") // 
+  favoritedBy     User[]          @relation("FavoriteListings") // 
+  notifications   Notification[]  @relation("NotificationListing") 
+  availability    Availability[] // Relation to Availability
+  listingNumber   Int?            @unique // Unique listing number
+  createdAt       DateTime        @default(now()) // 
+  updatedAt       DateTime        @updatedAt // Date and time the listing was updated
+  deletedAt       DateTime? // Soft delete timestamp
+  PriceHistory    PriceHistory[] // Relation to PriceHistory
+  Workflow        Workflow[] // Relation to Workflow
+  Expense         Expense[]
+
+  @@index([title])
+  @@index([likesCount])
+  @@index([listingType])
+  @@index([publishedStatus])
+  @@index([providerId])
+  @@index([category])
+  @@index([isActive])
+  @@index([featured])
+}
+
+model Like {
+  id        String    @id @default(cuid()) // Unique ID for each like
+  cuid      String    @unique @default(uuid()) // Unique CUID for the like
+  listingId String // Foreign key to Listing
+  userId    String? // Foreign key to User (optional if not required)
+  count     Int // Count of likes for a listing
+  isLiked   Boolean // Whether the like is active (true/false)
+  createdAt DateTime  @default(now()) // Date and time the like was created
+  updatedAt DateTime  @updatedAt // Date and time the like was updated
+  deletedAt DateTime? // Soft delete timestamp
+
+  listing Listing @relation(fields: [listingId], references: [id]) // Relation to Listing
+  user    User?   @relation(fields: [userId], references: [id]) // Optional relation to User
+
+  @@unique([listingId, userId]) // Ensure a user can like a listing only once
+  @@index([userId]) // Index on userId for fast querying
+}
+
+enum PhotoFormat {
+  JPG
+  PNG
+  GIF
+  WEBP
+}
+
+model Photo {
+  id               String      @id @default(cuid())
+  url              String
+  alt              String
+  src              String?
+  caption          String? // Optional field
+  width            Int
+  height           Int
+  format           PhotoFormat
+  metadata         Json? // JSON field
+  carId            String?
+  propertyId       String?
+  propertyRoomId   String?
+  hotelRoomId      String?
+  rentalPropertyId String? // ✅ 
+  hotelId          String?
+  userId           String?
+  agencyId         String?
+  agentId          String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+  slug             String      @unique
+  taskId           String?
+  facilityId       String?
+  listingId        String?
+  blogId           String?
+  reservationId    String?
+  experienceId     String?
+
+  // Relations
+  imageRecognition ImageRecognition[] @relation("PhotoRecognition")
+
+  agency         Agency?         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  agent          Agent?          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  property       Property?       @relation("PropertyPhotos", fields: [propertyId], references: [id], map: "PhotoPropertyRelation", onDelete: Cascade)
+  rentalProperty RentalProperty? @relation("RentalPropertyPhotos", fields: [rentalPropertyId], references: [id], onDelete: Cascade) // ✅ 
+  blog           Blog?           @relation(fields: [blogId], references: [id], onDelete: Cascade)
+  car            Car?            @relation(fields: [carId], references: [id], onDelete: Cascade)
+  experience     Experience?     @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  facility       Facility?       @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  hotel          Hotel?          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  listing        Listing?        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  reservation    Reservation?    @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  task           Task?           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  propertyRoom   PropertyRoom?   @relation(fields: [propertyRoomId], references: [id], onDelete: Cascade)
+  hotelRoom      HotelRoom?      @relation(fields: [hotelRoomId], references: [id], onDelete: Cascade)
+
+  @@index([carId])
+  @@index([propertyId])
+  @@index([propertyRoomId])
+  @@index([hotelRoomId])
+  @@index([rentalPropertyId]) // ✅ 
+  @@index([hotelId])
+  @@index([userId])
+  @@index([agencyId])
+  @@index([agentId])
+  @@index([taskId])
+  @@index([facilityId])
+  @@index([listingId])
+  @@index([blogId])
+  @@index([reservationId])
+  @@index([experienceId])
+}
+
+model Offer {
+  id            String         @id @default(cuid())
+  cuid          String         @unique @default(uuid())
+  name          String
+  description   String
+  amount        Float
+  OfferStatus   offerStatus
+  isPercentage  Boolean
+  startDate     DateTime
+  endDate       DateTime
+  deadline      DateTime
+  PaymentType   PaymentType
+  paymentStatus PaymentStatus
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  userId        String?
+  listingId     String?
+  helpId        String?
+  help          Help?          @relation("HelpOffers", fields: [helpId], references: [id])
+  Listing       Listing?       @relation(fields: [listingId], references: [id])
+  User          User?          @relation(fields: [userId], references: [id])
+  Payment       Payment[]
+  notifications Notification[] @relation("NotificationOffer") // Opposite relation to notification
+  OfferNumber   Int?           @unique // Added listingNumber as unique integer
+}
+
+model Configuration {
+  id                String          @id @default(cuid())
+  paymentProviderId String
+  key               String
+  value             String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
+  paymentProvider   PaymentProvider @relation(fields: [paymentProviderId], references: [id])
+
+  @@unique([paymentProviderId, key])
+}
+
+model PaymentProvider {
+  id             String          @id @default(cuid())
+  cuid           String          @unique @default(uuid())
+  name           String
+  type           ProviderType
+  apiKey         String          @db.VarChar(255)
+  secretKey      String          @db.VarChar(255)
+  webhookUrl     String?         @db.VarChar(500)
+  isActive       Boolean         @default(true)
+  status         ProviderStatus  @default(Pending)
+  country        String?         @db.VarChar(100)
+  currency       Currency        @default(USD)
+  fees           Float?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  configurations Configuration[]
+  payments       Payment[]       @relation("ProviderPayments")
+
+  @@index([type])
+  @@index([status])
+  @@index([country])
+}
+
+model Payment {
+  id               String           @id @default(cuid())
+  cuid             String           @unique @default(uuid())
+  amount           Float
+  currency         Currency         @default(USD)
+  description      String
+  slug             String           @unique
+  status           PaymentStatus
+  paymentType      PaymentType
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+  userId           String
+  reservationId    String
+  commission       Float?
+  taxType          TaxType
+  taxAmount        Float?
+  totalAmount      Float?
+  installment      Int?
+  couponId         String?
+  payoutMethod     PaymentType
+  guestId          String?
+  providerId       String
+  offerId          String?
+  rentalPropertyId String?
+  insuranceId      String?
+  helpId           String?
+  bitcoinPayments  BitcoinPayment[]
+  expenses         Expense[]        @relation("PaymentExpenses")
+  messages         Message[]
+  insurance        Insurance?       @relation("PaymentInsurance", fields: [insuranceId], references: [id], map: "PaymentInsuranceFK")
+  coupon           Coupon?          @relation(fields: [couponId], references: [id])
+  guest            Guest?           @relation(fields: [guestId], references: [id])
+  help             Help?            @relation("HelpPayments", fields: [helpId], references: [id])
+  offer            Offer?           @relation(fields: [offerId], references: [id])
+  provider         PaymentProvider  @relation("ProviderPayments", fields: [providerId], references: [id])
+  rentalProperty   RentalProperty?  @relation("RentalPropertyPayments", fields: [rentalPropertyId], references: [id])
+  reservation      Reservation      @relation(fields: [reservationId], references: [id])
+  user             User             @relation(fields: [userId], references: [id])
+  paymentIntent    PaymentIntent?
+  payouts          Payout[]
+  refunds          Refund[]
+  transactions     Transaction[]
+  notifications    Notification[]   @relation("NotificationPayment")
+  PaymentNumber    Int?             @unique // Added listingNumber as unique integer
+  membershipId     String? // Reference to the membership associated with the payment
+  membership       Membership?      @relation("PaymentMembership", fields: [membershipId], references: [id]) // Make this optional
+
+  @@index([rentalPropertyId])
+  @@index([insuranceId])
+  @@index([userId, reservationId])
+  @@index([status])
+  @@index([providerId])
+  @@index([offerId])
+}
+
+model Membership {
+  id               String      @id @default(cuid())
+  MembershipNumber Int?        @unique
+
+  accountType      AccountType
+  startDate        DateTime    @default(now())
+  endDate          DateTime?
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+
+  // Relations
+  user     User?     @relation(fields: [userId], references: [id])
+  userId   String?
+  agency   Agency?   @relation(fields: [agencyId], references: [id])
+  agencyId String?
+  agent    Agent?    @relation(fields: [agentId], references: [id])
+  agentId  String?
+  payments Payment[] @relation("PaymentMembership")
+
+  @@index([userId])
+  @@index([agencyId])
+  @@index([agentId])
+  @@index([MembershipNumber])
+  @@index([isActive])
+}
+
+enum FeeType {
+  ELECTRICITY
+  WATER
+  INTERNET
+  MANAGEMENT_FEE
+  FACILITY_ELECTRICITY
+  FACILITY_WATER
+  FACILITY_MAINTENANCE
+  SERVICE_FEE
+  TRANSACTION_FEE
+  PROCESSING_FEE
+  CLEANING_FEE
+  REPAIR_FEE
+  MAINTENANCE_FEE
+  SECURITY_FEE
+  UTILITY_FEE
+  RENTAL_FEE
+  INSURANCE_FEE
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  amount      Float
+  description String
+  category    ExpenseCategory @default(OTHER)
+  expenseType ExpenseType     @default(OTHER)
+  currency    Currency        @default(USD)
+
+  // Financial Details
+  accountId     String @default("")
+  accountHolder String @default("")
+  accountNumber String @default("")
+  bankName      String @default("")
+  bankAddress   String @default("")
+  swiftCode     String @default("")
+  iban          String @default("")
+
+  // Timing and Status
+  dueDate       DateTime?
+  paymentDate   DateTime      @default(now())
+  recurringType RecurringType?
+  frequency     Int? // For recurring expenses (e.g., monthly = 1, quarterly = 3)
+  status        ExpenseStatus @default(PENDING)
+
+  // Amounts and Calculations
+  subtotal    Float @default(0) // Amount before tax
+  taxAmount   Float?
+  taxRate     Float?
+  totalAmount Float @default(0) // Final amount including tax
+
+  // Related Entities
+  listingId        String?
+  listing          Listing?        @relation(fields: [listingId], references: [id])
+  propertyId       String?
+  property         Property?       @relation(fields: [propertyId], references: [id])
+  rentalPropertyId String?
+  rentalProperty   RentalProperty? @relation("RentalPropertyExpenses", fields: [rentalPropertyId], references: [id])
+  facilityId       String?
+  facility         Facility?       @relation("FacilityExpenses", fields: [facilityId], references: [id])
+
+  // Payment and User Relations
+  paymentId    String?
+  payment      Payment? @relation("PaymentExpenses", fields: [paymentId], references: [id])
+  payerId      String?
+  payer        User?    @relation("ExpensePayer", fields: [payerId], references: [id])
+  approvedById String?
+  approvedBy   User?    @relation("ExpenseApprovals", fields: [approvedById], references: [id])
+
+  // Documents and Notes
+  documents Document[] @relation("ExpenseDocuments")
+  notes     String?
+  tags      String[]
+
+  // Metadata
+  ExpenseNumber Int?      @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  // Relations
+  Notification Notification[]
+  Help         Help[]
+
+  @@index([listingId])
+  @@index([propertyId])
+  @@index([rentalPropertyId])
+  @@index([facilityId])
+  @@index([category])
+  @@index([expenseType])
+  @@index([status])
+  @@index([paymentDate])
+}
+enum ExpenseCategory {
+  SALE_RELATED
+  RENTAL_RELATED
+  BOOKING_RELATED
+  MAINTENANCE
+  UTILITIES
+  TAXES
+  INSURANCE
+  COMMISSION
+  MARKETING
+  ADMINISTRATIVE
+  OTHER
+}
+
+enum ExpenseType {
+  // Property Management
+  MAINTENANCE_REPAIR
+  CLEANING
+  SECURITY
+  UTILITIES
+  PROPERTY_TAX
+  INSURANCE
+
+  // Rental-Specific
+  TENANT_SCREENING
+  LEASE_PREPARATION
+  RENT_COLLECTION
+  EVICTION_COSTS
+
+  // Sale-Specific
+  LISTING_FEE
+  STAGING_COSTS
+  CLOSING_COSTS
+  TRANSFER_TAX
+
+  // Booking-Specific
+  PLATFORM_FEES
+  TURNOVER_COSTS
+  AMENITY_RESTOCKING
+  GUEST_SERVICES
+
+  // Common Business
+  MARKETING
+  ADMINISTRATIVE
+  LEGAL_PROFESSIONAL
+  COMMISSION
+  BANK_FEES
+  OTHER
+}
+
+enum RecurringType {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model Payout {
+  id            String        @id @default(cuid())
+  cuid          String        @unique @default(uuid())
+  amount        Float
+  currency      Currency      @default(USD)
+  description   String
+  slug          String        @unique
+  payoutMethod  PaymentType
+  payoutStatus  PayoutStatus
+  paymentId     String
+  transactionId String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  listingId     String
+  userId        String
+  helpId        String?
+  help          Help?         @relation("HelpPayouts", fields: [helpId], references: [id])
+  listing       Listing       @relation(fields: [listingId], references: [id])
+  payment       Payment       @relation(fields: [paymentId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+  reservations  Reservation[]
+  transactions  Transaction[]
+
+  PayoutNumber Int? @unique // Added listingNumber as unique integer
+
+  @@index([paymentId], map: "payout_paymentId_index")
+  @@index([userId])
+}
+
+model BitcoinPayment {
+  id            String         @id @default(cuid())
+  cuid          String         @unique @default(uuid())
+  amount        Float
+  transactionId String
+  status        PaymentStatus
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  paymentId     String
+  payment       Payment        @relation(fields: [paymentId], references: [id])
+  Notification  Notification[]
+
+  BitcoinNumber Int? @unique // Added listingNumber as unique integer
+
+  @@index([transactionId])
+}
+
+model PaymentIntent {
+  id        String              @id @default(cuid())
+  cuid      String              @unique @default(uuid())
+  amount    Float
+  currency  Currency            @default(USD)
+  status    PaymentIntentStatus
+  paymentId String?             @unique
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  deletedAt DateTime?
+  payment   Payment?            @relation(fields: [paymentId], references: [id])
+
+  PaymentIntentNumber Int? @unique // Added listingNumber as unique integer
+}
+
+model Transaction {
+  id                String          @id @default(cuid())
+  cuid              String          @unique @default(uuid())
+  description       String
+  amount            Float
+  currency          Currency        @default(USD)
+  transactionType   TransactionType
+  sourceUser        String
+  destinationUser   String
+  timestamp         DateTime
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
+  paymentId         String?
+  payoutId          String?
+  payment           Payment?        @relation(fields: [paymentId], references: [id])
+  payout            Payout?         @relation(fields: [payoutId], references: [id])
+  TransactionNumber Int?            @unique // Added listingNumber as unique integer
+
+  @@index([id], map: "transactionId_index")
+}
+
+model Refund {
+  id            String         @id @default(cuid())
+  cuid          String         @unique @default(uuid())
+  amount        Float
+  reason        String
+  status        RefundStatus
+  paymentId     String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  helpId        String?
+  help          Help?          @relation("HelpRefunds", fields: [helpId], references: [id])
+  payment       Payment        @relation(fields: [paymentId], references: [id])
+  Reservation   Reservation[]
+  notifications Notification[] @relation("NotificationRefund")
+  RefundNumber  Int?           @unique // Added listingNumber as unique integer
+}
+
+model Reservation {
+  id                 String              @id @default(cuid())
+  cuid               String              @unique @default(uuid())
+  checkInDate        DateTime            @map("startDate")
+  checkOutDate       DateTime            @map("endDate")
+  guestCount         Int
+  price              Price[]             @relation("ReservationPrice")
+  commission         Float?
+  taxType            TaxType?
+  taxAmount          Float?
+  totalAmount        Float?
+  paymentType        PaymentType
+  amount             Int
+  slug               String              @unique
+  status             ReservationStatus   @default(Confirmed)
+  specialRequests    String?
+  cancellationDate   DateTime?
+  cancellationReason CancellationReason?
+  paymentStatus      PaymentStatus       @default(Pending)
+  paymentDate        DateTime?
+  payoutId           String?
+  refundDate         DateTime?
+  refundId           String?
+
+  // Category references
+  propertyId   String?
+  carId        String?
+  hotelId      String?
+  experienceId String?
+  ticketId     String?
+
+  // Policy fields
+  reservationPolicyId String?
+  policySnapshot      Json? // Stores policy details at booking time
+  appliedRules        String[] @default([])
+  appliedFees         Json? // Stores any fees applied from policy
+
+  // User references
+  userId     String
+  guestId    String?
+  helpId     String?
+  providerId String
+  agentId    String?
+
+  // Stats
+  reviewCount       Int?   @default(0)
+  averageRating     Float?
+  ReservationNumber Int?   @unique
+
+  // Relations
+  documents         Document[]
+  messages          Message[]
+  payments          Payment[]
+  photos            Photo[]
+  agent             Agent?             @relation("AgentReservation", fields: [agentId], references: [id])
+  property          Property?          @relation(fields: [propertyId], references: [id])
+  car               Car?               @relation(fields: [carId], references: [id])
+  experience        Experience?        @relation("ExperienceReservations", fields: [experienceId], references: [id])
+  Guest             Guest?             @relation(fields: [guestId], references: [id])
+  help              Help?              @relation("HelpReservations", fields: [helpId], references: [id])
+  hotel             Hotel?             @relation("HotelReservations", fields: [hotelId], references: [id])
+  payout            Payout?            @relation(fields: [payoutId], references: [id])
+  refund            Refund?            @relation(fields: [refundId], references: [id])
+  user              User               @relation(fields: [userId], references: [id])
+  reviews           Review[]
+  notifications     Notification[]     @relation("NotificationReservation")
+  workflows         Workflow[]
+  bookingSource     Provider           @relation("ReservationProvider", fields: [providerId], references: [id])
+  Availability      Availability[]
+  reservationPolicy ReservationPolicy? @relation(fields: [reservationPolicyId], references: [id])
+
+  // Timestamps
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+  RentalProperty   RentalProperty? @relation(fields: [rentalPropertyId], references: [id])
+  rentalPropertyId String?
+
+  @@index([userId])
+  @@index([guestId])
+  @@index([propertyId])
+  @@index([carId])
+  @@index([hotelId])
+  @@index([experienceId])
+  @@index([ticketId])
+  @@index([reservationPolicyId])
+  @@index([status])
+  @@index([paymentStatus])
+}
+
+model ReservationPolicy {
+  id       String   @id @default(cuid())
+  category Category // Type of reservation (Hotel, Property, Car, etc.)
+
+  // Reference to different entities (only one should be set)
+  carId        String?
+  hotelId      String?
+  propertyId   String?
+  experienceId String?
+  ticketId     String?
+
+  car          Car?          @relation(fields: [carId], references: [id])
+  hotel        Hotel?        @relation(fields: [hotelId], references: [id])
+  property     Property?     @relation(fields: [propertyId], references: [id])
+  experience   Experience?   @relation(fields: [experienceId], references: [id])
+  ticket       Ticket?       @relation(fields: [ticketId], references: [id])
+  reservations Reservation[]
+
+  // Common Policy Fields
+  cancellationPolicy String?
+  specialNotes       String?
+  rules              String[] @default([])
+  safetyMeasures     String[] @default([])
+
+  // Basic Reservation Rules
+  minDuration   Int? // Minimum stay/rental duration
+  maxDuration   Int? // Maximum stay/rental duration
+  advanceNotice Int  @default(24) // Hours of advance notice needed
+
+  // Cancellation Details
+  cancellationDeadline Int    @default(48) // Hours before start time
+  cancellationFee      Float? // Fee amount if cancelled after deadline
+  noShowFee            Float? // Fee for no-shows
+
+  // Financial Requirements
+  depositRequired   Boolean     @default(true)
+  depositAmount     Float? // Security deposit amount
+  insuranceRequired Boolean     @default(false)
+  insurances        Insurance[] // Changed from InsuranceOption to Insurance
+
+  // Time Windows
+  checkInTime  String? // For hotels/properties
+  checkOutTime String? // For hotels/properties
+  pickupWindow Int? // Minutes (for cars/tickets)
+  returnWindow Int? // Minutes (for cars/tickets)
+  lateFee      Float? // Fee for late returns/checkouts
+
+  // Capacity and Restrictions
+  maxGuests        Int? // For hotels/properties
+  minAge           Int? // Minimum age requirement
+  maxAge           Int? // Maximum age requirement (for some experiences)
+  documentRequired Boolean  @default(false)
+  documentTypes    String[] @default([]) // Required document types
+
+  // Usage Limits
+  usageLimit    Int? // For tickets/experiences
+  mileageLimit  Int? // For cars
+  extraUsageFee Float? // Fee for exceeding limits
+
+  // Seasonal and Special Rates
+  seasonalRates Json? // Seasonal pricing adjustments
+  holidayRates  Json? // Holiday pricing adjustments
+  groupRates    Json? // Group pricing
+  longTermRates Json? // Extended stay/rental rates
+
+  // Additional Policies
+  petPolicy     String? // Pet rules and fees
+  smokingPolicy String? // Smoking rules and fees
+  partyPolicy   String? // Event/party rules
+  quietHours    String? // Quiet hours policy
+
+  // Common fields
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([category])
+  @@index([carId])
+  @@index([hotelId])
+  @@index([propertyId])
+  @@index([experienceId])
+  @@index([ticketId])
+  @@index([isActive])
+}
+
+model Review {
+  id            String    @id @default(cuid())
+  userId        String
+  content       String
+  stars         Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  date          DateTime?
+  parentId      String?
+  reviewCount   Int?
+  blogId        String?
+  guestId       String?
+  agentId       String?
+  reservationId String?
+  carId         String?
+  propertyId    String?
+  experienceId  String?
+  hotelId       String?
+  listingId     String?
+  facilityId    String?
+  eventId       String?
+  airlineId     String?
+  flightId      String?
+  hotelStaffId  String?
+  agencyId      String?
+  averageRating Float?
+
+  hotelStaff  HotelStaff?  @relation("HotelStaffReviews", fields: [hotelStaffId], references: [id])
+  agent       Agent?       @relation("AgentReviews", fields: [agentId], references: [id])
+  airline     Airline?     @relation("AirlineReviews", fields: [airlineId], references: [id])
+  property    Property?    @relation("PropertyReviews", fields: [propertyId], references: [id])
+  blog        Blog?        @relation("BlogReviews", fields: [blogId], references: [id])
+  car         Car?         @relation("CarReviews", fields: [carId], references: [id])
+  event       Event?       @relation("EventReviews", fields: [eventId], references: [id])
+  experience  Experience?  @relation("ExperienceReviews", fields: [experienceId], references: [id])
+  facility    Facility?    @relation("FacilityReviews", fields: [facilityId], references: [id])
+  flight      Flight?      @relation("FlightReviews", fields: [flightId], references: [id])
+  guest       Guest?       @relation("GuestReviews", fields: [guestId], references: [id])
+  hotel       Hotel?       @relation("HotelReviews", fields: [hotelId], references: [id])
+  listing     Listing?     @relation("ListingReviews", fields: [listingId], references: [id])
+  parent      Review?      @relation("ReviewReplies", fields: [parentId], references: [id])
+  replies     Review[]     @relation("ReviewReplies")
+  reservation Reservation? @relation(fields: [reservationId], references: [id])
+  agency      Agency?      @relation("AgencyReviews", fields: [agencyId], references: [id])
+
+  user          User           @relation(fields: [userId], references: [id])
+  notifications Notification[] @relation("NotificationReview")
+
+  @@index([userId], map: "review_userId_index")
+  @@index([blogId], map: "review_blogId_index")
+  @@index([carId], map: "review_carId_index")
+  @@index([propertyId], map: "review_propertyId_index")
+  @@index([experienceId], map: "review_experienceId_index")
+  @@index([hotelId], map: "review_hotelId_index")
+  @@index([listingId], map: "review_listingId_index")
+  @@index([facilityId], map: "review_facilityId_index")
+  @@index([eventId], map: "review_eventId_index")
+  @@index([airlineId], map: "review_airlineId_index")
+  @@index([guestId], map: "review_guestId_index")
+  @@index([agencyId], map: "review_agencyId_index")
+  @@map("review")
+}
+
+model Passenger {
+  id              String    @id @default(cuid())
+  cuid            String    @unique @default(uuid())
+  firstName       String
+  lastName        String
+  age             Int
+  gender          Gender?
+  passportNumber  String
+  flightId        String?
+  hotelId         String?
+  carId           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  car             Car?      @relation(fields: [carId], references: [id])
+  flight          Flight?   @relation(fields: [flightId], references: [id])
+  hotel           Hotel?    @relation(fields: [hotelId], references: [id])
+  PassengerNumber Int?      @unique // Added listingNumber as unique integer
+
+  @@index([flightId], map: "passenger_flightId_index")
+  @@index([carId], map: "passenger_carId_index")
+}
+
+enum HotelType {
+  LUXURY
+  BUSINESS
+  RESORT
+  BOUTIQUE
+  AIRPORT
+  APARTMENT
+  VILLA
+  MOTEL
+  HOSTEL
+  BED_AND_BREAKFAST
+  VACATION_RENTAL
+  ALL_INCLUSIVE
+  CASINO
+  EXTENDED_STAY
+  HERITAGE
+  ECO_FRIENDLY
+  SPA_RESORT
+  GOLF_RESORT
+  SKI_RESORT
+  BEACH_RESORT
+  CITY_HOTEL
+  CONVENTION_CENTER
+}
+
+model Insurance {
+  id        String        @id @default(cuid())
+  provider  String
+  coverage  Float
+  premium   Float
+  startDate DateTime
+  endDate   DateTime
+  category  Category // Type of insurance (Car, Property, etc.)
+  type      InsuranceType @default(BASIC)
+
+  // Insurance Details
+  name        String
+  description String?
+  dailyRate   Float? // For daily insurance options
+  deductible  Float?
+  maxCoverage Float?
+
+  // Policy Details
+  policyNumber String?  @unique
+  terms        String?
+  conditions   String[] @default([])
+  exclusions   String[] @default([])
+
+  // Relationships
+  reservationPolicyId String?
+  reservationPolicy   ReservationPolicy? @relation(fields: [reservationPolicyId], references: [id])
+
+  // Existing relationships
+  payments         Payment[]        @relation("PaymentInsurance")
+  rentalProperties RentalProperty[] @relation("RentalPropertyInsurance")
+  followedBy       User[]           @relation("UserFollowedInsurances")
+  users            User[]           @relation("UserInsurance")
+  notifications    Notification[]   @relation("NotificationInsurance")
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([provider])
+  @@index([startDate, endDate])
+  @@index([category])
+  @@index([type])
+}
+
+enum InsuranceType {
+  BASIC
+  STANDARD
+  PREMIUM
+  COMPREHENSIVE
+  THIRD_PARTY
+  LIABILITY
+  THEFT
+  DAMAGE
+  NATURAL_DISASTER
+  CANCELLATION
+  MEDICAL
+  TRAVEL
+  BUSINESS
+  PERSONAL
+  CAR
+  HEALTH
+}
+
+model Help {
+  id            String         @id @default(cuid())
+  title         String
+  description   String
+  status        HelpStatus
+  priority      HelpPriority
+  autoNumber    Int            @default(autoincrement())
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  userId        String?
+  facilityId    String?
+  expenseId     String? // Reference to the associated expense
+  user          User?          @relation("AssignedHelpRequests", fields: [userId], references: [id], map: "AssignedHelpRequests_userId_fkey")
+  facility      Facility?      @relation("FacilityHelpRequests", fields: [facilityId], references: [id], map: "Help_facilityId_fkey")
+  expense       Expense?       @relation(fields: [expenseId], references: [id]) // New relation to Expense
+  listings      Listing[]      @relation("HelpListings")
+  messages      Message[]      @relation("HelpMessages")
+  offers        Offer[]        @relation("HelpOffers")
+  payments      Payment[]      @relation("HelpPayments")
+  payouts       Payout[]       @relation("HelpPayouts")
+  refunds       Refund[]       @relation("HelpRefunds")
+  reservations  Reservation[]  @relation("HelpReservations")
+  tasks         Task[]         @relation("HelpTasks")
+  notifications Notification[] @relation("NotificationHelp")
+}
+
+model CleaningSupport {
+  id               String    @id @default(cuid())
+  propertyId       String
+  rentalPropertyId String // Add this line to define the field
+  cleaningDate     DateTime
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  property       Property       @relation(fields: [propertyId], references: [id])
+  notifications  Notification[] @relation("NotificationCleaningSupport")
+  rentalProperty RentalProperty @relation("RentalPropertyCleaningSupports", fields: [rentalPropertyId], references: [id]) // Ensure this is correctly named
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  cuid      String    @unique @default(uuid())
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  blogId    String?
+  Blog      Blog?     @relation(fields: [blogId], references: [id])
+
+  @@index([cuid], map: "tag_cuid_index")
+}
+
+model RentalProperty {
+  id             String        @id @default(cuid())
+  cuid           String        @unique @default(uuid())
+  title          String
+  description    String
+  type           PropertyType
+  price          Price[]       @relation("RentalPropertyPrice")
+  sizePrefix     String?
+  propertyRoomId String?
+  room           PropertyRoom? @relation(fields: [propertyRoomId], references: [id])
+  bathroom       Int
+  size           Float
+  sizeUnit       String
+  floor          Int
+  insuranceId    String?
+  ownerId        String
+  status         Status
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  expenses   Expense[]  @relation("RentalPropertyExpenses")
+  payments   Payment[]  @relation("RentalPropertyPayments")
+  insurance  Insurance? @relation("RentalPropertyInsurance", fields: [insuranceId], references: [id])
+  owner      User       @relation("UserRentalProperties", fields: [ownerId], references: [id])
+  followedBy User[]     @relation("UserFollowedRentals")
+  reports    Report[]   @relation("RentalPropertyReports")
+  tasks      Task[]     @relation("RentalPropertyTasks")
+  workflows  Workflow[]
+
+  // New fields for better management
+  lastUpdatedById String? // Store the user ID who last updated the rental property
+  lastUpdatedBy   User?   @relation(fields: [lastUpdatedById], references: [id])
+  featuredImage   String?
+
+  isAvailable   Boolean @default(true) // Indicates if the property is available for new reservations
+  totalExpenses Float?  @default(0) // Tracks total expenses linked to the rental property
+  totalPayments Float?  @default(0) // Tracks total payments made for the rental property
+
+  lastPaymentDate DateTime? // Tracks the date of the most recent payment
+  nextPaymentDate DateTime? // Tracks when the next payment is due
+
+  taskStatus TaskStatus @default(Pending) // Status of tasks (e.g., "Completed", "Pending")
+
+  averageRating Float? @default(0) // Average rating for the property based on user feedback
+
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  securityDeposit   Float?    @default(0) // The amount required as a security deposit
+
+  condition String? // Describes the property condition (e.g., "New", "Good", "Needs Maintenance")
+
+  // Added relations
+  cleaningSupports CleaningSupport[] @relation("RentalPropertyCleaningSupports")
+  photos           Photo[]           @relation("RentalPropertyPhotos")
+  documents        Document[]
+  reservations     Reservation[]
+
+  @@index([insuranceId])
+}
+
+enum TaskLabel {
+  Window
+  Door
+  Electricity
+  Plumping
+  Roof
+  Gates
+  Cleaning
+  Furniture
+  Wardrobe
+}
+
+model Task {
+  id               String          @id @default(cuid())
+  cuid             String          @unique @default(uuid())
+  title            String // Title of the task
+  slug             String          @unique // Slug for the task
+  taskLabel        TaskLabel       @default(Door)
+  priority         TaskPriority    @default(Low) // Priority of the task
+  taskStatus       TaskStatus      @default(New) // Status of the task
+  taskCategory     TaskCategory    @default(Cleaning) // Category of the task
+  propertyId       String // Reference to the associated property
+  rentalPropertyId String? // Reference to the associated rental property
+  assignedToId     String          @map("assigned_to_id") // Reference to the user assigned to the task
+  createdAt        DateTime        @default(now()) // Timestamp when the task was created
+  updatedAt        DateTime        @updatedAt // Timestamp when the task was last updated
+  deletedAt        DateTime? // Optional timestamp for soft deletes
+  helpId           String? // Optional reference to the help associated with the task
+  messages         Message[] // Messages associated with the task
+  photos           Photo[] // Photos associated with the task
+  hotelStaffId     String?
+  assignedTo       User            @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  help             Help?           @relation("HelpTasks", fields: [helpId], references: [id], map: "Task_helpId_fkey_unique")
+  property         Property        @relation(fields: [propertyId], references: [id]) // Relation to Property
+  rentalProperty   RentalProperty? @relation("RentalPropertyTasks", fields: [rentalPropertyId], references: [id])
+  notifications    Notification[]  @relation("TaskNotifications") // Relation to notifications associated with the task
+  hotelStaff       HotelStaff?     @relation("HotelStaffTasks", fields: [hotelStaffId], references: [id])
+  agent            Agent?          @relation("AgentTasks", fields: [agentId], references: [id])
+  agentId          String?
+
+  @@index([propertyId]) // Index for faster queries on propertyId
+  @@index([assignedToId]) // Index for faster queries on assignedToId
+}
+
+model Tax {
+  id          String    @id @default(cuid())
+  cuid        String    @unique @default(uuid())
+  name        String
+  description String?
+  type        TaxType
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+}
+
+model Ticket {
+  id                  String              @id @default(cuid())
+  cuid                String              @unique @default(uuid())
+  eventName           String
+  eventDate           DateTime
+  venue               String
+  slug                String              @unique
+  price               Price[]             @relation("TicketPrice") // Updated line
+  workflows           Workflow[]
+  reservationPolicies ReservationPolicy[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime?
+
+  @@index([eventName])
+}
+
+model Preferences {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  theme                Theme? // Enum for predefined themes
+  language             Language? // Enum for predefined languages
+  notificationPrefs    Json? // JSON for 
+  timezone             String?
+  dateFormat           String? // Date format as a string
+  timeFormat           String? // Time format as a string
+  privacySettings      Json? // JSON for privacy settings
+  displaySettings      Json? // JSON for display settings
+  emailSubscriptions   Json? // JSON for email subscriptions
+  currency             Currency? @default(USD) // Enum for predefined currencies
+  marketingPreferences Json? // JSON for marketing preferences
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+  user                 User      @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "idx_user_id")
+}
+
+model Taxonomy {
+  id          String    @id @default(uuid())
+  name        String
+  href        String
+  thumbnail   String
+  count       Int
+  color       String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+}
+
+model Channel {
+  id           String        @id @default(cuid())
+  cuid         String        @unique @default(uuid())
+  name         String
+  description  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  channelUsers ChannelUser[]
+  messages     Message[]     @relation("ChannelMessages")
+
+  @@index([name], map: "idx_channel_name")
+}
+
+model ChannelUser {
+  id        String    @id @default(cuid())
+  userId    String
+  channelId String
+  role      UserRole
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  channel   Channel   @relation(fields: [channelId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@index([channelId])
+}
+
+model Token {
+  id        String    @id @default(cuid())
+  value     String
+  userId    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  user      User?     @relation(fields: [userId], references: [id])
+}
+
+enum Condition {
+  New
+  SecondHand
+  Damaged
+}
+
+enum TransactionType {
+  Credit
+  Debit
+}
+
+enum TagCategory {
+  Property
+  Car
+  Experience
+  Ticket
+}
+
+enum HelpStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  ESCALATED
+}
+
+enum HelpPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskCategory {
+  Cleaning
+  Repair
+  Decoration
+  Service
+  Moving
+}
+
+enum Transmission {
+  Manual
+  Automatic
+  Semi_Auto
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  ELECTRIC
+  HYBRID
+}
+
+enum DriveType {
+  FRONT_WHEEL
+  REAR_WHEEL
+  ALL_WHEEL
+  FOUR_WHEEL
 }
 
 enum Category {
@@ -177,34 +3004,528 @@ enum Category {
   Ticket
 }
 
+enum TaskStatus {
+  New
+  InProgress
+  Completed
+  Pending
+}
+
+enum TaskPriority {
+  Low
+  Medium
+  High
+  Urgent
+}
+
+enum ExperienceCategory {
+  Teeth
+  Food
+  Drink
+  Art
+  Culture
+  Nature
+  Sports
+  Botox
+  Esthetic
+  HairTrans
+  Tour
+}
+
+enum FacilityType {
+  Commercial
+  Residential
+  CommercialAndResidential
+  Hospitality
+  Transportation
+  Event
+  Experience
+  Restaurant
+}
+
+enum HotelAmenity {
+  Wifi
+  Restaurant
+  Bar
+  IndoorPool
+  OutdoorPool
+  Gym
+  Spa
+  Parking
+  ValetParking
+  ShuttleService
+  Concierge
+  ConferenceFacilities
+  RoomService
+  BusinessCenter
+  PetFriendly
+  FamilyFriendly
+  BeachAccess
+  SkiStorage
+  GolfCourse
+  Tennis
+  Casino
+  Nightclub
+  KidsClub
+  Playground
+  Laundry
+  MiniMarket
+  GiftShop
+  ATM
+  CurrencyExchange
+  TourDesk
+  CarRental
+  BikeRental
+  WaterSports
+  DivingCenter
+  Airport_Transfer
+}
+
+enum RoomType {
+  Single
+  Double
+  Twin
+  Suite
+  King
+  Queen
+  Studio
+  Penthouse
+  Presidential
+  Executive
+  Deluxe
+  Standard
+  Family
+  Connected
+  Accessible
+  Ocean_View
+  Mountain_View
+  City_View
+  Pool_View
+  Garden_View
+}
+
+enum ResourceType {
+  image
+  imgUrl
+  str
+  documents
+  video
+  videoUrl
+}
+
+enum PropertyAmenities {
+  wifi
+  parking
+  airConditioning
+  heating
+  kitchen
+  breakfastIncluded
+  petFriendly
+  tv
+  washer
+  dryer
+  balcony
+  fireplace
+  iron
+  hairDryer
+  coffeeMaker
+  workspace
+  elevator
+}
+
+enum LocationAmenities {
+  CityCenter
+  School
+  PoliceStation
+  FireStation
+  Park
+  Mosque
+  Church
+  Sinagog
+  Hospital
+  Pharmacy
+  Market
+  DryCenter
+}
+
+enum FacilityAmenities {
+  indoorPool
+  outdoorPool
+  security
+  fitnessCenter
+  groupLessons
+  spa
+  sauna
+  turkishBath
+  gym
+  restaurant
+  parkingArea
+  guestParking
+  roomService
+  concierge
+  businessCenter
+  meetingRooms
+  kidsClub
+  park
+}
+
+enum Currency {
+  TL
+  EUR
+  USD
+  GBP
+  CAD
+  YEN
+  AUD
+  CHF
+  SEK
+  NZD
+  Crypto
+}
+
+enum Language {
+  EN
+  TR
+  DE
+  ES
+  FR
+  IR
+  RU
+  AR
+  ZH
+  JA
+}
+
+enum Contact {
+  message
+  email
+  phone
+  whatsapp
+  googleMessage
+  iMessage
+}
+
+enum AccountType {
+  Free
+  Paid
+  Premium
+  PremiumPlus
+}
+
+enum Gender {
+  Male
+  Female
+  NonBinary
+}
+
+enum Theme {
+  Light
+  Dark
+}
+
+enum AgencyType {
+  RealEstate
+  Travel
+  Tourism
+  Facility
+  Other
+}
+
+enum VehicleType {
+  Suv
+  Sedan
+  Coupe
+  Hatchback
+  Convertible
+  Minivan
+  SportsCar
+  Electric
+  Hybrid
+  Luxury
+  Compact
+}
+
+enum CarFeature {
+  AIR_CONDITIONING
+  GPS
+  BLUETOOTH
+  SUNROOF
+  LEATHER_SEATS
+  HEATED_SEATS
+  CRUISE_CONTROL
+  REAR_CAMERA
+  PARKING_SENSORS
+  ALLOY_WHEELS
+  TOW_HITCH
+  Four_WD_AWD
+  KEYLESS_ENTRY
+  REMOTE_START
+  APPLE_CARPLAY
+  ANDROID_AUTO
+  THIRD_ROW_SEATING
+  PANORAMIC_ROOF
+  AUTOMATED_PARKING
+  LANE_KEEPING_ASSIST
+  BLIND_SPOT_MONITORING
+  WIRELESS_CHARGING
+  CUSTOM_FEATURE
+}
+
 enum ListingType {
   ForSale
   ForRent
   Booking
 }
 
-enum Currency {
-  USD
-  EUR
-  GBP
-  TL
-  CAD
-  AUD
-  CHF
-  SEK
-  NZD
-  YEN
-  RUB
-  CNY
-  INR
-  BRL
-  MXN
-  ZAR
-  SGD
-  HKD
-  NOK
-  DKK
-  Crypto
+enum Status {
+  Available
+  Owner
+  Rented
+  UnderConstruction
+  NewProject
+  Reserved
+  Sold
+  Empty
+}
+
+enum PropertyType {
+  Apartment
+  Villa
+  Residence
+  Condo
+  Mansion
+  Building
+  Office
+  Shop
+  SharedRoom
+  SharedPlace
+  SingleHouse
+  DublexHouse
+  Penthouse
+
+  Restaurant
+  Warehouse
+  Industrial
+}
+
+enum SpaceRecognitionType {
+  // Interior Spaces
+  LivingRoom
+  Bedroom
+  Kitchen
+  Bathroom
+  DiningRoom
+  Office
+  Hallway
+  Closet
+
+  // Exterior Spaces
+  Garden
+  Pool
+  Terrace
+  Balcony
+  Garage
+  Driveway
+  Facade
+  Entrance
+  Stairs
+  Elevator
+  Gym
+  Spa
+  Lobby
+  RecreationArea
+  Unknown
+}
+
+model ImageRecognition {
+  id             String               @id @default(cuid())
+  imageUrl       String
+  base64Hash     String // Store base64 hash of the image for quick comparison
+  recognizedType SpaceRecognitionType
+  confidence     Float // ML confidence score
+  metadata       Json // Additional ML metadata
+  propertyId     String
+  photoId        String // Add this field
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  property Property @relation("PropertyImageRecognition", fields: [propertyId], references: [id])
+  photo    Photo    @relation("PhotoRecognition", fields: [photoId], references: [id])
+
+  @@index([base64Hash])
+  @@index([recognizedType])
+  @@index([propertyId])
+  @@index([photoId])
+}
+
+enum MarkerType {
+  ForSale
+  ForRent
+  Booking
+  Car
+  Hotel
+  Experience
+  Ticket
+}
+
+enum ReportCategory {
+  Income
+  Expense
+  Numbers
+  Problems
+  Tasks
+  Offers
+  Price
+  CommissionSummary
+  BookingVolume
+  Revenue
+  Performance
+}
+
+enum TaxType {
+  company
+  personal
+  contract
+}
+
+enum NotificationType {
+  MESSAGE
+  MENTION
+  SYSTEM
+  OFFER
+  RESERVATION
+  REFUND
+  INSURANCE
+  HELP
+  CLEANING_SUPPORT
+  REVIEW
+}
+
+enum PaymentIntentStatus {
+  Pending
+  Succeeded
+  Failed
+  RejectedByBank
+}
+
+enum PaymentType {
+  CreditCard
+  DebitCard
+  BankTransfer
+  Cash
+  PayPal
+  Stripe
+  ApplePay
+  GooglePay
+  Other
+}
+
+enum PaymentStatus {
+  Pending
+  Succeeded
+  Failed
+  RejectedByBank
+}
+
+enum RefundStatus {
+  Pending
+  Completed
+  Rejected
+}
+
+enum UserRole {
+  Admin
+  Moderator
+  User
+  Guest
+  Agent
+  Agency
+  Tenant
+  Buyer
+  Facility
+  Seller
+  Passenger
+  Company
+  Owner
+  AppTeam
+}
+
+enum UserPermission {
+  VIEW_User
+  CREATE_User
+  UPDATE_User
+  DELETE_User
+  VIEW_ROLE
+  CREATE_ROLE
+  UPDATE_ROLE
+  DELETE_ROLE
+  MANAGE_Users
+  MANAGE_CONTENT
+  VIEW_AGENCY_INFO
+  MANAGE_LISTINGS
+  VIEW_LISTINGS
+  MANAGE_CLIENTS
+  VIEW_COMPANY_INFO
+  MANAGE_ASSETS
+  VIEW_OWNED_ASSET
+  BOOK_LISTINGS
+  VIEW_ASSETS
+  MANAGE_TENANCY
+  VIEW_TASKS
+  MANAGE_TASKS
+}
+
+enum offerStatus {
+  Pending
+  Accepted
+  Rejected
+}
+
+enum PaymentMethod {
+  CreditCard
+  DebitCard
+  BankTransfer
+  Cash
+  PayPal
+  Stripe
+  ApplePay
+  GooglePay
+  Bitcoin
+  Other
+}
+
+enum ReservationStatus {
+  Confirmed
+  Cancelled
+  Completed
+  Pending
+}
+
+enum CancellationReason {
+  Customer
+  Host
+  System
+}
+
+enum PayoutStatus {
+  Pending
+  Completed
+  Failed
+}
+
+enum ProviderType {
+  CreditCard
+  DigitalWallet
+  BankTransfer
+  Cryptocurrency
+  Other
+}
+
+enum ProviderStatus {
+  Pending
+  Active
+  Suspended
+  Inactive
 }
 
 enum PublishedStatus {
@@ -216,33 +3537,383 @@ enum PublishedStatus {
   DELETED
 }
 
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-  REFUNDED
+model Workflow {
+  id               String         @id @default(cuid())
+  name             String
+  description      String?
+  status           WorkFlowStatus @default(Waiting)
+  workflowType     WorkflowType   @default(GENERAL)
+  priority         TaskPriority   @default(Low)
+  metadata         Json?
+  category         Category
+  userId           String
+  listingId        String?
+  priceId          String?
+  carId            String
+  hotelId          String?
+  propertyId       String?
+  experienceId     String?
+  ticketId         String?
+  rentalPropertyId String?
+  reservationId    String?
+  reportId         String?
+
+  // Relations
+  user           User            @relation(fields: [userId], references: [id])
+  listing        Listing?        @relation(fields: [listingId], references: [id])
+  car            Car?            @relation(fields: [carId], references: [id])
+  hotel          Hotel?          @relation(fields: [hotelId], references: [id])
+  property       Property?       @relation(fields: [propertyId], references: [id])
+  experience     Experience?     @relation(fields: [experienceId], references: [id])
+  ticket         Ticket?         @relation(fields: [ticketId], references: [id])
+  rentalProperty RentalProperty? @relation(fields: [rentalPropertyId], references: [id])
+  reservation    Reservation?    @relation(fields: [reservationId], references: [id])
+  report         Report?         @relation(fields: [reportId], references: [id])
+  notifications  Notification[]  @relation("NotificationWorkflow")
+  price          Price?          @relation(fields: [priceId], references: [id])
+
+  // Workflow related relations
+  tasks        WorkflowTask[]
+  workflowLogs WorkflowLog[]     @relation("WorkflowLogs")
+  triggers     WorkflowTrigger[]
+  messages     Message[]
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Indexes
+  @@index([status])
+  @@index([userId])
+  @@index([workflowType])
+  @@index([priority])
+  @@index([category])
+  @@index([listingId])
+  @@index([priceId])
+  @@index([carId])
+  @@index([hotelId])
+  @@index([propertyId])
+  @@index([experienceId])
+  @@index([ticketId])
+  @@index([rentalPropertyId])
+  @@index([reservationId])
 }
 
-enum PaymentStatus {
+model WorkflowTask {
+  id          String         @id @default(cuid())
+  workflowId  String
+  name        String
+  type        TaskType
+  status      WorkFlowStatus @default(Waiting)
+  metadata    Json?
+  assignedTo  String? // Add optional user assignment
+  retryCount  Int            @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+  workflow    Workflow       @relation(fields: [workflowId], references: [id])
+  assignee    User?          @relation(fields: [assignedTo], references: [id]) // Add user relation
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Add Message Relations
+  messages    Message[]
+  messageLogs WorkflowLog[]
+
+  @@index([workflowId])
+  @@index([status])
+  @@index([assignedTo])
+}
+
+model WorkflowLog {
+  id         String   @id @default(cuid())
+  workflowId String
+  taskId     String?
+  userId     String
+  level      LogLevel
+  logMessage String @default("No message") // Add default value
+  metadata   Json?
+
+  // Relations
+  workflow Workflow @relation("WorkflowLogs", fields: [workflowId], references: [id], map: "WorkflowLog_workflowId_fkey")
+  user     User     @relation(fields: [userId], references: [id])
+
+  // Message Relation
+  messageId String?
+  message   Message? @relation("MessageLogs", fields: [messageId], references: [id])
+
+  createdAt      DateTime      @default(now())
+  WorkflowTask   WorkflowTask? @relation(fields: [workflowTaskId], references: [id])
+  workflowTaskId String?
+
+  @@index([workflowId])
+  @@index([userId])
+  @@index([messageId])
+}
+
+model WorkflowTrigger {
+  id         String       @id @default(cuid())
+  workflowId String
+  userId     String // Add user reference
+  event      TriggerEvent
+  condition  Json?
+  metadata   Json?
+  workflow   Workflow     @relation(fields: [workflowId], references: [id])
+  user       User         @relation(fields: [userId], references: [id]) // Add user relation
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([workflowId])
+  @@index([event])
+  @@index([userId])
+}
+
+enum TaskType {
+  // Existing types
+  DATA_PREPARATION
+  MODEL_TRAINING
+  MODEL_EVALUATION
+  MODEL_DEPLOYMENT
+  DATA_VALIDATION
+  FEATURE_ENGINEERING
+
+  // New price-related types
+  PRICE_CALCULATION
+  PRICE_VALIDATION
+  PRICE_UPDATE
+  PRICE_SYNC
+  DISCOUNT_CALCULATION
+  TAX_CALCULATION
+  CURRENCY_CONVERSION
+
+  // New availability-related types
+  AVAILABILITY_CHECK
+  AVAILABILITY_UPDATE
+  CALENDAR_SYNC
+
+  // New booking-related types
+  RESERVATION_VALIDATION
+  PAYMENT_PROCESSING
+  CONFIRMATION_SENDING
+
+  // General types
+  API_CALL
+  NOTIFICATION
+  EMAIL_SENDING
+  DATA_SYNC
+  ERROR_HANDLING
+  MESSAGES
+}
+
+enum LogLevel {
+  INFO
+  WARNING
+  ERROR
+  DEBUG
+}
+
+model SearchQuery {
+  id          String   @id @default(cuid())
+  query       String // Original search query
+  userId      String // Reference to User model
+  parsedQuery Json? // AI-parsed query structure (e.g., keywords, categories, intent)
+  intent      String? // AI-predicted query intent (e.g., "product search", "location search")
+  processedAt DateTime @default(now()) // When query was processed by AI
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id])
+  feedback      Feedback[]
+  searchResults SearchResult[]
+}
+
+model SearchResult {
+  id             String   @id @default(cuid())
+  searchQueryId  String // Foreign Key to SearchQuery
+  resultData     Json // Store result data (e.g., listing, price, etc.)
+  relevanceScore Float? // AI-driven score for ranking search results (0-1 scale)
+  modelUsed      String? // AI model used for ranking (e.g., "BERT", "GPT-3", etc.)
+  metadata       Json? // Store additional AI-related metadata (e.g., model version, model features)
+  additionalData Json? // Flexible field for extra result information (e.g., suggestions)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  searchQuery SearchQuery @relation(fields: [searchQueryId], references: [id])
+}
+
+model Recommendation {
+  id          String   @id @default(cuid())
+  userId      String // Reference to User model
+  content     String // The recommended content (e.g., product, service, etc.)
+  contentType String // Type of content (e.g., "product", "service")
+  source      String // Source of recommendation (e.g., "AI-based", "user preferences")
+  confidence  Float? // Confidence score of the recommendation (0-1 scale)
+  metadata    Json? // Personalized metadata (e.g., reasons for recommendation, context)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User       @relation(fields: [userId], references: [id])
+  feedback Feedback[]
+}
+
+enum AiModels {
+  BERT
+  GPT_3
+  GPT_4
+  DeepSeek
+  Ollama
+  DeepSeek_R1_Latest
+  Qwen2_5_Coder_7B
+  Llama3_2_Latest
+  Nomic_Embed_Text_Latest
+}
+
+model Translation {
+  id                 String   @id @default(cuid())
+  text               String // Original text to be translated
+  targetLang         Language // Enum for target language
+  translatedText     String // The translated text
+  modelUsed          AiModels // AI model used for translation (e.g., "GPT-3", "BERT", etc.)
+  translationQuality Float? // AI model confidence or translation quality score (0-1 scale)
+  version            String // Version of the translation (to track improvements over time)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Add Message Relation
+  messageId String?
+  message   Message? @relation(fields: [messageId], references: [id])
+
+  @@index([messageId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String // Describes the action taken (e.g., "search query processed")
+  details   Json // Stores relevant details about the action
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TriggerEvent {
+  // Existing events
+  // New price-related events
+  PRICE_CHANGED
+  PRICE_VALIDATED
+  DISCOUNT_APPLIED
+  CURRENCY_UPDATED
+
+  // New availability events
+  AVAILABILITY_CHANGED
+  CALENDAR_UPDATED
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+
+  // System events
+  WORKFLOW_STARTED
+  WORKFLOW_COMPLETED
+  TASK_FAILED
+  RETRY_NEEDED
+}
+
+enum WorkflowType {
+  GENERAL
+  PRICE_UPDATE
+  PRICE_VALIDATION
+  AVAILABILITY_UPDATE
+  RESERVATION_PROCESSING
+  PAYMENT_PROCESSING
+  LISTING_SYNC
+  DATA_SYNC
+  NOTIFICATION
+  REPORTING
+}
+
+enum WorkFlowStatus {
+  Waiting
+  Running
+  Completed
+  Failed
+  Cancelled
+}
+
+enum TranslationStatus {
   PENDING
+  IN_PROGRESS
   COMPLETED
   FAILED
-  REFUNDED
 }
 
-enum PaymentMethod {
-  CREDIT_CARD
-  PAYPAL
-  BANK_TRANSFER
-  CRYPTO
-  CASH
+enum MessageWorkflowStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
-enum NotificationType {
-  MESSAGE
-  BOOKING
-  REVIEW
-  PAYMENT
-  SYSTEM
+model Testimonial {
+  id         String    @id @default(cuid())
+  content    String
+  author     User      @relation(fields: [authorId], references: [id])
+  authorId   String
+  position   String?
+  rating     Float
+  isVerified Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  agency     Agency    @relation(fields: [agencyId], references: [id])
+  agencyId   String
+  agent      Agent?    @relation(fields: [agentId], references: [id])
+  agentId    String?
+
+  @@index([agencyId])
+  @@index([agentId])
+  @@index([authorId])
+}
+
+model Award {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  issuer      String
+  date        DateTime
+  image       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  agency      Agency    @relation(fields: [agencyId], references: [id])
+  agencyId    String
+  agent       Agent?    @relation(fields: [agentId], references: [id])
+  agentId     String?
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+
+  @@index([agencyId])
+  @@index([agentId])
+  @@index([userId])
+}
+
+model Partnership {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  logo        String?
+  website     String?
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  agency      Agency    @relation(fields: [agencyId], references: [id])
+  agencyId    String
+  agent       Agent?    @relation(fields: [agentId], references: [id])
+  agentId     String?
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+
+  @@index([agencyId])
+  @@index([agentId])
+  @@index([userId])
 }
